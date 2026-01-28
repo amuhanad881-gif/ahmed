@@ -18,6 +18,147 @@ from email.mime.multipart import MIMEMultipart
 from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
+# ============ DATABASE CONNECTION ============
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+def get_db():
+    """الاتصال بقاعدة البيانات"""
+    conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+    return conn
+
+def init_db():
+    """إنشاء الجداول أول مرة"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # جدول المستخدمين
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            email VARCHAR(255) PRIMARY KEY,
+            username VARCHAR(100) UNIQUE NOT NULL,
+            password_hash VARCHAR(255) NOT NULL,
+            salt VARCHAR(100) NOT NULL,
+            premium BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    ''')
+    
+    # جدول الأصدقاء
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS friends (
+            user1 VARCHAR(100),
+            user2 VARCHAR(100),
+            PRIMARY KEY (user1, user2)
+        )
+    ''')
+    
+    # جدول طلبات الصداقة
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS friend_requests (
+            from_user VARCHAR(100),
+            to_user VARCHAR(100),
+            created_at TIMESTAMP DEFAULT NOW(),
+            PRIMARY KEY (from_user, to_user)
+        )
+    ''')
+    
+    # جدول الرسائل الخاصة
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS private_messages (
+            id VARCHAR(50) PRIMARY KEY,
+            from_user VARCHAR(100),
+            to_user VARCHAR(100),
+            message TEXT,
+            timestamp TIMESTAMP DEFAULT NOW()
+        )
+    ''')
+    
+    # جدول الغرف
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rooms (
+            id VARCHAR(50) PRIMARY KEY,
+            name VARCHAR(200) NOT NULL,
+            description TEXT,
+            type VARCHAR(50),
+            creator VARCHAR(100),
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    ''')
+    
+    # جدول إعدادات المستخدمين
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_settings (
+            username VARCHAR(100) PRIMARY KEY,
+            display_name VARCHAR(200),
+            avatar TEXT,
+            banner TEXT,
+            bio TEXT,
+            theme VARCHAR(50)
+        )
+    ''')
+    
+    # جدول الجلسات
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sessions (
+            email VARCHAR(255),
+            token VARCHAR(255),
+            created_at TIMESTAMP,
+            expires_at TIMESTAMP,
+            ip VARCHAR(100),
+            PRIMARY KEY (email, token)
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
+    print("✅ Database tables created successfully!")
+
+def save_user(email, username, password_hash, salt):
+    """حفظ مستخدم جديد"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO users (email, username, password_hash, salt, premium)
+        VALUES (%s, %s, %s, %s, %s)
+    ''', (email, username, password_hash, salt, False))
+    conn.commit()
+    conn.close()
+
+def get_user(email):
+    """جلب بيانات مستخدم"""
+    conn = get_db()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    cursor.execute('SELECT * FROM users WHERE email = %s', (email,))
+    user = cursor.fetchone()
+    conn.close()
+    return dict(user) if user else None
+
+def get_user_by_username(username):
+    """جلب مستخدم بالاسم"""
+    conn = get_db()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    cursor.execute('SELECT * FROM users WHERE username = %s', (username,))
+    user = cursor.fetchone()
+    conn.close()
+    return dict(user) if user else None
+
+def update_user_premium(email, premium_status):
+    """تحديث حالة Premium"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE users 
+        SET premium = %s, premium_until = %s
+        WHERE email = %s
+    ''', (premium_status, (datetime.now() + timedelta(days=30)).isoformat(), email))
+    conn.commit()
+    conn.close()
+
+# ============ END DATABASE ============
+
 # Initialize Flask app FIRST
 app = Flask(__name__)
 app.secret_key = 'echo-room-secret-key-2025'
@@ -3729,56 +3870,51 @@ def handle_signup(data):
         emit('signup_error', {'message': 'Please use a valid Gmail address (@gmail.com)'})
         return
     
-    # Check if email already exists
-    if email in users_db:
+    # تحقق من وجود المستخدم في Database
+    existing_user = get_user(email)
+    if existing_user:
         emit('signup_error', {'message': 'Email already registered'})
         return
     
-    # Check if username already exists
-    for user_data in users_db.values():
-        if user_data.get('username') == username:
-            emit('signup_error', {'message': 'Username already taken'})
-            return
+    # تحقق من اسم المستخدم
+    existing_username = get_user_by_username(username)
+    if existing_username:
+        emit('signup_error', {'message': 'Username already taken'})
+        return
     
     # Hash password
     hashed_password, salt = hash_password(password)
     
-    # Create user
-    users_db[email] = {
-        'username': username,
-        'password_hash': hashed_password,
-        'salt': salt,
-        'premium': False,
-        'created_at': datetime.now().isoformat(),
-        'verified': False
-    }
-    
-    # Initialize user data structures
-    friends_db[username] = []
-    friend_requests_db[username] = []
-    user_settings_db[username] = {
-        'displayName': username,
-        'avatar': None,
-        'banner': None,
-        'bio': '',
-        'theme': 'dark'
-    }
-    
-    # Create session if remember me is enabled
-    session_token = None
-    if remember_me:
-        session_token = create_session(email)
-    
-    save_data()
-    
-    # Send welcome email
-    send_welcome_email(email, username)
-    
-    emit('signup_success', {
-        'message': 'Account created successfully',
-        'email': email,
-        'session_token': session_token
-    })
+    # حفظ في Database
+    try:
+        save_user(email, username, hashed_password, salt)
+        
+        # Initialize user data structures (مؤقتاً للأصدقاء)
+        friends_db[username] = []
+        friend_requests_db[username] = []
+        user_settings_db[username] = {
+            'displayName': username,
+            'avatar': None,
+            'banner': None,
+            'bio': '',
+            'theme': 'dark'
+        }
+        
+        # Send welcome email
+        send_welcome_email(email, username)
+        
+        emit('signup_success', {
+            'message': 'Account created successfully',
+            'email': email
+        })
+        
+        print(f"✅ User registered: {username} ({email})")
+        
+    except Exception as e:
+        print(f"❌ Signup error: {e}")
+        emit('signup_error', {'message': 'Registration failed. Please try again.'})
+
+
 
 @socketio.on('login')
 def handle_login(data):
@@ -3786,11 +3922,12 @@ def handle_login(data):
     password = data.get('password', '')
     remember_me = data.get('remember_me', True)
     
-    if email not in users_db:
+    # جلب المستخدم من Database
+    user_data = get_user(email)
+    
+    if not user_data:
         emit('login_error', {'message': 'Invalid email or password'})
         return
-    
-    user_data = users_db[email]
     
     # Verify password
     if not verify_password(password, user_data['password_hash'], user_data['salt']):
@@ -3819,6 +3956,8 @@ def handle_login(data):
         'premium': user_data.get('premium', False),
         'session_token': session_token
     })
+    
+    print(f"✅ User logged in: {username}")
 
 @socketio.on('change_password')
 def handle_change_password(data):
@@ -4726,21 +4865,21 @@ def handle_activate_premium(data):
         emit('premium_error', {'message': 'Upgrade code required'})
         return
     
-    user_email = find_user_email(username)
-    if not user_email:
-        emit('premium_error', {'message': 'User not found'})
-        return
+    user_email = session['email']
     
     # Premium activation code
     if code != 'The Goat':
         emit('premium_error', {'message': 'Invalid upgrade code'})
         return
     
-    users_db[user_email]['premium'] = True
-    users_db[user_email]['premium_until'] = (datetime.now() + timedelta(days=30)).isoformat()
-    save_data()
-    
-    emit('premium_activated', {'username': username})
+    # تحديث في Database
+    try:
+        update_user_premium(user_email, True)
+        emit('premium_activated', {'username': username})
+        print(f"✅ Premium activated for: {username}")
+    except Exception as e:
+        print(f"❌ Premium error: {e}")
+        emit('premium_error', {'message': 'Failed to activate premium'})
 
 @socketio.on('send_friend_request')
 def handle_send_friend_request(data):
@@ -5085,6 +5224,12 @@ def handle_end_call(data):
 if __name__ == '__main__':
     print("=" * 60)
     print("🎤 ECHOROOM - SECURE VERSION (FIXED)")
+    try:
+        init_db()
+        print("✅ Database initialized successfully")
+    except Exception as e:
+        print(f"❌ Database error: {e}")
+        print("⚠️  Make sure DATABASE_URL is set in environment variables")
     print("=" * 60)
     print("\n✅ ALL ISSUES FIXED:")
     print("- Persistent user accounts (saved to echoroom_data.json)")
