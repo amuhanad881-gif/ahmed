@@ -12,13 +12,11 @@ import smtplib
 import ssl
 import re
 import secrets
-import requests
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
-RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 
 # Initialize Flask app FIRST
 app = Flask(__name__)
@@ -27,10 +25,7 @@ app.secret_key = 'echo-room-secret-key-2025'
 # Initialize SocketIO AFTER app
 socketio = SocketIO(app, 
                    cors_allowed_origins="*",
-                   async_mode='eventlet',
-                   transports=['websocket', 'polling'],
-                   logger=True,
-                   engineio_logger=True)
+                   async_mode='threading')
 
 # Email Configuration (REPLACE WITH REAL CREDENTIALS)
 EMAIL_SENDER = "echoroomteam1@gmail.com"  # Replace with real Gmail
@@ -49,8 +44,15 @@ def is_valid_gmail(email):
     return re.match(EMAIL_REGEX, email) is not None
 
 def send_welcome_email(to_email, username, verification_token=None):
-    """Send welcome email to new users (Resend API)"""
+    """Send welcome email to new users"""
     try:
+        # Create message
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Welcome to EchoRoom!"
+        msg["From"] = EMAIL_SENDER
+        msg["To"] = to_email
+        
+        # HTML Email Content
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -62,53 +64,71 @@ def send_welcome_email(to_email, username, verification_token=None):
                 </div>
                 <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
                     <p>Hi {username} 👋,</p>
-
+                    
                     <p>Welcome to <strong>EchoRoom</strong> — your new space for real-time voice and chat communication.</p>
-
+                    
                     <p>At EchoRoom, you can:</p>
-                    <ul>
-                        <li>🎙️ Join voice rooms and talk instantly with friends</li>
-                        <li>💬 Chat in servers built around your interests</li>
-                        <li>🌍 Create your own rooms and connect with people anywhere</li>
-                        <li>🚀 Enjoy smooth, simple, and reliable communication</li>
+                    <ul style="list-style: none; padding: 0;">
+                        <li style="margin: 10px 0; padding-left: 25px; position: relative;">✅ 🎙️ Join voice rooms and talk instantly with friends</li>
+                        <li style="margin: 10px 0; padding-left: 25px; position: relative;">✅ 💬 Chat in servers built around your interests</li>
+                        <li style="margin: 10px 0; padding-left: 25px; position: relative;">✅ 🌍 Create your own rooms and connect with people anywhere</li>
+                        <li style="margin: 10px 0; padding-left: 25px; position: relative;">✅ 🚀 Enjoy smooth, simple, and reliable communication</li>
                     </ul>
-
+                    
                     <p>We're excited to have you with us and can't wait to see the communities you'll build.</p>
-
+                    
+                    <p>If you have any questions or feedback, we're always listening.</p>
+                    
                     <p>See you inside EchoRoom,<br>
                     <strong>The EchoRoom Team</strong></p>
+                    
+                    <div style="text-align: center; margin-top: 30px; color: #666; font-size: 12px;">
+                        <p>This is an automated message, please do not reply to this email.</p>
+                    </div>
                 </div>
             </div>
         </body>
         </html>
         """
+        
+        # Plain text version
+        text_content = f"""Hi {username} 👋,
 
-        response = requests.post(
-            "https://api.resend.com/emails",
-            headers={
-                "Authorization": f"Bearer {RESEND_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "from": "EchoRoom <onboarding@resend.dev>",
-                "to": [to_email],
-                "subject": "Welcome to EchoRoom!",
-                "html": html_content
-            },
-            timeout=10
-        )
+Welcome to **EchoRoom** — your new space for real-time voice and chat communication.
 
-        if response.status_code == 200:
-            print(f"📧 Welcome email sent to {to_email}")
-            return True
-        else:
-            print("❌ Resend error:", response.text)
-            return False
+At EchoRoom, you can:
+🎙️ Join voice rooms and talk instantly with friends
+💬 Chat in servers built around your interests
+🌍 Create your own rooms and connect with people anywhere
+🚀 Enjoy smooth, simple, and reliable communication
 
+We're excited to have you with us and can't wait to see the communities you'll build.
+
+If you have any questions or feedback, we're always listening.
+
+See you inside EchoRoom,
+**The EchoRoom Team**"""
+        
+        # Attach both versions
+        part1 = MIMEText(text_content, "plain")
+        part2 = MIMEText(html_content, "html")
+        msg.attach(part1)
+        msg.attach(part2)
+        
+        # Create secure SSL context
+        context = ssl.create_default_context()
+        
+        # Connect to SMTP server and send email
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
+            server.starttls(context=context)
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_SENDER, to_email, msg.as_string())
+        
+        print(f"📧 Welcome email sent to {to_email}")
+        return True
     except Exception as e:
-        print("❌ Failed to send email:", repr(e))
+        print(f"❌ Failed to send email: {e}")
         return False
-
 
 def generate_session_token():
     """Generate a secure session token"""
@@ -4048,8 +4068,8 @@ if __name__ == '__main__':
     print("\n🚀 Access: http://localhost:5000")
     print("=" * 60)
     
-        port = int(os.environ.get('PORT', 5000))
     socketio.run(app, 
                  host='0.0.0.0', 
-                 port=port, 
-                 debug=False)
+                 port=5000, 
+                 debug=False, 
+                 allow_unsafe_werkzeug=True)
