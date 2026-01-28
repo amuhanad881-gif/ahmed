@@ -27,7 +27,10 @@ app.secret_key = 'echo-room-secret-key-2025'
 # Initialize SocketIO AFTER app
 socketio = SocketIO(app, 
                    cors_allowed_origins="*",
-                   async_mode='threading')
+                   async_mode='eventlet',
+                   transports=['websocket', 'polling'],
+                   logger=True,
+                   engineio_logger=True)
 
 # Email Configuration (REPLACE WITH REAL CREDENTIALS)
 EMAIL_SENDER = "echoroomteam1@gmail.com"  # Replace with real Gmail
@@ -4045,8 +4048,8 @@ if __name__ == '__main__':
     print("\n🚀 Access: http://localhost:5000")
     print("=" * 60)
     
+        port = int(os.environ.get('PORT', 5000))
     socketio.run(app, 
                  host='0.0.0.0', 
-                 port=5000, 
-                 debug=False, 
-                 allow_unsafe_werkzeug=True)
+                 port=port, 
+                 debug=False)
