@@ -39,6 +39,13 @@ EMAIL_REGEX = r'^[a-zA-Z0-9._%+-]+@gmail\.com$'
 # Session token expiry (30 days)
 SESSION_EXPIRY_DAYS = 30
 
+# إضافة encoder مخصص للتاريخ
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
+
 def is_valid_gmail(email):
     """Check if email is a valid Gmail address"""
     return re.match(EMAIL_REGEX, email) is not None
@@ -635,6 +642,153 @@ HTML_TEMPLATE = '''
             border-radius: 8px;
             color: white;
         }
+/* Voice Message Styles */
+        .voice-recording-indicator {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 46, 99, 0.95);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 25px;
+            display: none;
+            align-items: center;
+            gap: 10px;
+            z-index: 2000;
+            animation: pulse 1.5s infinite;
+            box-shadow: 0 5px 20px rgba(255, 46, 99, 0.5);
+        }
+
+        .voice-recording-indicator.active {
+            display: flex;
+        }
+
+        .recording-dot {
+            width: 12px;
+            height: 12px;
+            background: white;
+            border-radius: 50%;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .voice-message {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 15px;
+            background: rgba(0, 229, 255, 0.1);
+            border-radius: 20px;
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            width: 100%;
+            max-width: 350px;
+        }
+
+        .voice-play-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #00e5ff;
+            border: none;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            flex-shrink: 0;
+        }
+
+        .voice-play-btn:hover {
+            background: #00b8d4;
+            transform: scale(1.1);
+        }
+
+        .voice-play-btn.playing {
+            background: #ff2e63;
+        }
+
+        .voice-waveform {
+            flex: 1;
+            height: 30px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .voice-progress {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            background: rgba(0, 229, 255, 0.3);
+            border-radius: 15px;
+            transition: width 0.1s;
+        }
+
+        .voice-duration {
+            font-size: 12px;
+            opacity: 0.7;
+            min-width: 40px;
+            text-align: right;
+        }
+
+        .voice-record-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255, 46, 99, 0.2);
+            border: 2px solid #ff2e63;
+            color: #ff2e63;
+            cursor: pointer;
+            font-size: 18px;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .voice-record-btn:hover {
+            background: rgba(255, 46, 99, 0.3);
+            transform: scale(1.1);
+        }
+
+        .voice-record-btn.recording {
+            background: #ff2e63;
+            color: white;
+            animation: pulse 1.5s infinite;
+        }
+
+        .voice-cancel-btn {
+            position: fixed;
+            bottom: 90px;
+            right: 30px;
+            background: rgba(255, 46, 99, 0.9);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            display: none;
+            transition: all 0.3s;
+            z-index: 2000;
+        }
+
+        .voice-cancel-btn.active {
+            display: block;
+        }
+
+        .voice-cancel-btn:hover {
+            background: #ff2e63;
+            transform: scale(1.05);
+        }
+
     </style>
 </head>
 <body>
@@ -650,8 +804,8 @@ HTML_TEMPLATE = '''
             </div>
             
             <div class="auth-tabs">
-                <button class="auth-tab active" onclick="showAuthTab('login')">Login</button>
-                <button class="auth-tab" onclick="showAuthTab('signup')">Sign Up</button>
+                <button class="auth-tab active" onclick="showAuthTab('login', event)">Login</button>
+                <button class="auth-tab" onclick="showAuthTab('signup', event)">Sign Up</button>
             </div>
             
             <div id="login-section" class="auth-section active">
@@ -805,13 +959,35 @@ HTML_TEMPLATE = '''
             <div class="chat-messages" id="chat-messages"></div>
 
             <div class="message-input-area">
+                <button class="voice-record-btn" id="voice-record-btn" 
+                        onmousedown="startVoiceRecording()" 
+                        onmouseup="stopVoiceRecording()"
+                        ontouchstart="startVoiceRecording()" 
+                        ontouchend="stopVoiceRecording()"
+                        title="Hold to record voice message">
+                    <i class="fas fa-microphone"></i>
+                </button>
+                
                 <input type="text" class="message-input" id="message-input" 
                        placeholder="Type your message here..." 
                        onkeypress="if(event.keyCode===13) sendMessage()">
+                       
                 <button class="input-btn" onclick="sendMessage()">
                     <i class="fas fa-paper-plane"></i>
                 </button>
             </div>
+
+            <!-- Voice Recording Indicator -->
+            <div class="voice-recording-indicator" id="voice-recording-indicator">
+                <div class="recording-dot"></div>
+                <span id="recording-timer">0:00</span>
+                <span>Recording...</span>
+            </div>
+
+            <!-- Voice Cancel Button -->
+            <button class="voice-cancel-btn" id="voice-cancel-btn" onclick="cancelVoiceRecording()">
+                <i class="fas fa-times"></i> Cancel Recording
+            </button>
         </div>
 
         <!-- Right Panel -->
@@ -848,13 +1024,13 @@ HTML_TEMPLATE = '''
             </div>
 
             <div class="settings-tabs">
-                <button class="settings-tab active" onclick="showSettingsTab('profile')">
+                <button class="settings-tab active" onclick="showSettingsTab('profile', event)">
                     <i class="fas fa-user"></i> Profile
                 </button>
-                <button class="settings-tab" onclick="showSettingsTab('appearance')">
+                <button class="settings-tab" onclick="showSettingsTab('appearance', event)">
                     <i class="fas fa-palette"></i> Appearance
                 </button>
-                <button class="settings-tab" onclick="showSettingsTab('security')">
+                <button class="settings-tab" onclick="showSettingsTab('security', event)">
                     <i class="fas fa-shield-alt"></i> Security
                 </button>
             </div>
@@ -1127,6 +1303,14 @@ HTML_TEMPLATE = '''
         let friends = [];
         let privateChats = {};
 
+        // Voice recording variables
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+        let recordingStartTime = null;
+        let recordingTimer = null;
+        let recordingStream = null;
+
         // Initialize WebSocket
         function initWebSocket() {
             socket = io();
@@ -1138,6 +1322,24 @@ HTML_TEMPLATE = '''
                 // Try auto-login with saved session
                 tryAutoLogin();
             });
+
+socket.on('message_sent', (data) => {
+    console.log('✅ MESSAGE SENT CONFIRMATION:', data);
+    
+    
+    if (data.type === 'private') {
+        console.log('📝 Adding sent private message immediately');
+        addMessage({
+            id: data.id || 'temp-' + Date.now(),
+            username: currentUser,
+            displayName: userSettings.displayName || currentUser,
+            message: data.message,
+            server: currentRoom,
+            timestamp: data.timestamp || new Date().toISOString(),
+            type: 'private'
+        });
+    }
+});
 
             socket.on('disconnect', () => {
                 console.log('❌ Disconnected from server');
@@ -1177,7 +1379,7 @@ HTML_TEMPLATE = '''
             socket.on('signup_success', (data) => {
                 console.log('✅ Signup success:', data);
                 showNotification('Account created! Welcome email sent. Please login.', 'success');
-                showAuthTab('login');
+                showAuthTab('login', null);
                 
                 // Auto-fill email
                 document.getElementById('login-email').value = data.email;
@@ -1219,56 +1421,251 @@ HTML_TEMPLATE = '''
                 }
             });
 
-            // Private chat messages - FIXED VERSION
-            socket.on('private_message', (data) => {
-                console.log('📨 Private message received:', data);
+            // Private chat messages - ULTRA FIXED VERSION
+socket.on('private_message', (data) => {
+    console.log('📨🔥 PRIVATE MESSAGE RECEIVED - DEBUG:', data);
+    
+    // Create consistent room ID
+    const sortedUsers = [data.from, data.to].sort();
+    const consistentRoomId = `dm_${sortedUsers[0]}_${sortedUsers[1]}`;
+    
+    console.log('🔍 Debug info:');
+    console.log('- From:', data.from);
+    console.log('- To:', data.to);
+    console.log('- Consistent Room ID:', consistentRoomId);
+    console.log('- Current Room:', currentRoom);
+    console.log('- Data Room ID:', data.room_id);
+    
+    // Check if this message is for current chat
+    if (currentRoom === consistentRoomId || currentRoom === data.room_id) {
+        console.log('✅✅✅ Adding private message to current chat');
+        addMessage({
+            id: data.id || Date.now().toString(),
+            username: data.from,
+            displayName: data.displayName || data.from,
+            message: data.message,
+            server: consistentRoomId,
+            timestamp: data.timestamp || new Date().toISOString(),
+            type: 'private'
+        });
+    } else {
+        console.log('📨 Private message received but not in current chat');
+        // Show notification for new private message
+        showNotification(`📩 New message from ${data.displayName || data.from}: ${data.message.substring(0, 30)}...`, 'info');
+        
+        // Update friend list to show notification
+        if (friends && friends.length > 0) {
+            updateFriendsList(friends);
+        }
+        
+        // إضافة علامة على الصديق في القائمة
+        const friendIndex = friends.findIndex(f => f.username === data.from);
+        if (friendIndex !== -1) {
+            friends[friendIndex].hasNewMessage = true;
+            updateFriendsList(friends);
+        }
+    }
+});
+
+socket.on('private_messages', (data) => {
+    console.log('📨🔥 PRIVATE MESSAGES LOADED - DEBUG:', data);
+    const messagesDiv = document.getElementById('chat-messages');
+    
+    if (!messagesDiv) {
+        console.error('❌ messagesDiv not found!');
+        return;
+    }
+    
+    messagesDiv.innerHTML = '';
+    
+    if (data.messages && data.messages.length > 0) {
+        console.log(`✅ Loading ${data.messages.length} private messages`);
+        data.messages.forEach((msg, index) => {
+            console.log(`📝 Message ${index + 1}:`, msg);
+            addMessage({
+                id: msg.id || Date.now().toString() + index,
+                username: msg.from,
+                displayName: msg.displayName || msg.from,
+                message: msg.message,
+                server: msg.room_id || currentRoom,
+                timestamp: msg.timestamp || new Date().toISOString(),
+                type: 'private'
+            });
+        });
+        
+        // التمرير لآخر رسالة
+        setTimeout(() => {
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }, 100);
+    } else {
+        console.log('📨 No private messages found');
+        messagesDiv.innerHTML = `
+            <div style="
+                padding: 40px 20px;
+                text-align: center;
+                opacity: 0.7;
+                font-size: 14px;
+            ">
+                <i class="fas fa-comment-slash" style="font-size: 32px; margin-bottom: 10px;"></i><br>
+                No messages yet<br>
+                <small style="opacity: 0.5;">Start the conversation!</small>
+            </div>
+        `;
+    }
+});
+
+// أضف هذا الحدث الجديد لمعالجة أخطاء الرسائل الخاصة
+socket.on('private_message_error', (data) => {
+    console.error('❌ PRIVATE MESSAGE ERROR:', data);
+    showNotification(data.message || 'Failed to send private message', 'error');
+});
+
+// أضف هذا الحدث لمعالجة أخطاء تحميل الرسائل
+socket.on('private_messages_error', (data) => {
+    console.error('❌ PRIVATE MESSAGES ERROR:', data);
+    showNotification(data.message || 'Failed to load messages', 'error');
+});
+
+// أضف هذا الحدث لتأكيد إرسال الرسالة
+socket.on('private_message_sent', (data) => {
+    console.log('✅ Private message sent confirmation:', data);
+    // يمكنك إضافة مؤشر إرسال ناجح هنا
+});
+
+// Voice messages
+            socket.on('voice_message', (data) => {
+                console.log('🎤 Voice message received:', data);
+                addVoiceMessage(data);
+            });
+
+            socket.on('private_voice_message', (data) => {
+                console.log('🎤 Private voice message received:', data);
                 
-                // Create consistent room ID
                 const sortedUsers = [data.from, data.to].sort();
                 const consistentRoomId = `dm_${sortedUsers[0]}_${sortedUsers[1]}`;
                 
-                // Check if this message is for current chat
                 if (currentRoom === consistentRoomId || currentRoom === data.room_id) {
-                    console.log('📨 Adding private message to current chat');
-                    addMessage({
-                        id: data.id,
+                    console.log('✅ Adding private voice message to current chat');
+                    addVoiceMessage({
+                        id: data.id || Date.now().toString(),
                         username: data.from,
                         displayName: data.displayName || data.from,
-                        message: data.message,
-                        server: consistentRoomId,
-                        timestamp: data.timestamp,
-                        type: 'private'
+                        audioData: data.audioData,
+                        duration: data.duration,
+                        timestamp: data.timestamp || new Date().toISOString(),
+                        type: 'voice'
                     });
                 } else {
-                    console.log('📨 Private message received but not in current chat');
-                    // Show notification for new private message
-                    showNotification(`New private message from ${data.displayName || data.from}`, 'info');
-                    
-                    // Update friend list to show notification
-                    updateFriendsList(friends);
+                    showNotification(`🎤 New voice message from ${data.displayName || data.from}`, 'info');
                 }
             });
 
-            socket.on('private_messages', (data) => {
-                console.log('📨 Private messages loaded:', data);
-                const messagesDiv = document.getElementById('chat-messages');
-                messagesDiv.innerHTML = '';
-                if (data.messages && data.messages.length > 0) {
-                    data.messages.forEach(msg => {
-                        addMessage({
-                            id: msg.id,
-                            username: msg.from,
-                            displayName: msg.displayName || msg.from,
-                            message: msg.message,
-                            server: msg.room_id || currentRoom,
-                            timestamp: msg.timestamp,
-                            type: 'private'
-                        });
-                    });
-                } else {
-                    console.log('📨 No private messages found');
-                }
-            });
+// ========== تحديث دالة addMessage ==========
+// تأكد من وجود هذه الدالة المعدلة:
+function addMessage(data) {
+    console.log('🖊️ Adding message to chat:', {
+        id: data.id,
+        from: data.username,
+        message: data.message.substring(0, 30) + '...'
+    });
+    
+    const messagesDiv = document.getElementById('chat-messages');
+    if (!messagesDiv) {
+        console.error('❌ Cannot add message: messagesDiv not found');
+        return;
+    }
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${data.username === currentUser ? 'own' : ''}`;
+    messageDiv.setAttribute('data-message-id', data.id);
+    messageDiv.style.position = 'relative';
+    messageDiv.style.animation = 'slideIn 0.3s ease';
+    
+    // Check if current user can delete this message
+    const canDelete = data.username === currentUser;
+    
+    // Get first letter for avatar
+    const firstLetter = data.username ? data.username.charAt(0).toUpperCase() : 'U';
+    
+    messageDiv.innerHTML = `
+        <div class="message-avatar">
+            <div class="avatar-placeholder" style="background: ${data.username === currentUser ? 'rgba(0, 229, 255, 0.3)' : 'rgba(67, 181, 129, 0.3)'};">
+                ${firstLetter}
+            </div>
+        </div>
+        <div class="message-content">
+            <div class="message-bubble" style="${data.username === currentUser ? 'background: rgba(0, 229, 255, 0.15);' : ''}">
+                <div class="message-header">
+                    <strong>${data.displayName || data.username || 'Unknown'}</strong>
+                    <span>${new Date(data.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                </div>
+                <div class="message-text">${escapeHtml(data.message)}</div>
+            </div>
+            ${canDelete ? `
+            <div class="message-actions">
+                <button class="msg-action-btn" onclick="deleteMessage('${data.id}')" title="Delete Message">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+            ` : ''}
+        </div>
+    `;
+    
+    messagesDiv.appendChild(messageDiv);
+    
+    // التمرير لآخر رسالة
+    setTimeout(() => {
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }, 50);
+    
+    console.log('✅ Message added successfully');
+}
+
+// ========== تحديث دالة joinPrivateChat ==========
+function joinPrivateChat(friend, roomId) {
+    console.log('🚪🔥 JOINING PRIVATE CHAT - DEBUG:', { friend, roomId });
+    
+    // تحديث المتغيرات
+    currentRoom = roomId;
+    currentRoomData = { type: 'dm', id: roomId };
+    
+    // تحديث الواجهة
+    document.getElementById('current-chat-name').innerHTML = 
+        `<i class="fas fa-user-friends" style="color: #43b581"></i> ${friend}`;
+    
+    // إظهار رسالة تحميل
+    const messagesDiv = document.getElementById('chat-messages');
+    messagesDiv.innerHTML = `
+        <div style="padding: 30px; text-align: center; opacity: 0.7;">
+            <i class="fas fa-spinner fa-spin"></i> Loading messages...
+        </div>
+    `;
+    
+    // إعلام السيرفر بالانضمام للغرفة
+    socket.emit('join_room', {
+        username: currentUser,
+        room: roomId
+    });
+    
+    // طلب الرسائل
+    console.log('📤 Requesting private messages for friend:', friend);
+    socket.emit('get_private_messages', {
+        username: currentUser,
+        friend: friend
+    });
+    
+    // تحديث رأس الغرفة
+    updateRoomHeader();
+    
+    // تنظيف إشعارات الرسائل الجديدة
+    const friendIndex = friends.findIndex(f => f.username === friend);
+    if (friendIndex !== -1 && friends[friendIndex].hasNewMessage) {
+        friends[friendIndex].hasNewMessage = false;
+        updateFriendsList(friends);
+    }
+    
+    console.log('✅✅✅ Successfully joined private chat');
+}
 
             // User settings
             socket.on('user_settings', (settings) => {
@@ -1606,7 +2003,7 @@ HTML_TEMPLATE = '''
         }
 
         // ========== AUTHENTICATION FUNCTIONS ==========
-        function showAuthTab(tabName) {
+        function showAuthTab(tabName, event) {
             document.querySelectorAll('.auth-section').forEach(tab => {
                 tab.classList.remove('active');
             });
@@ -1615,7 +2012,9 @@ HTML_TEMPLATE = '''
             });
             
             document.getElementById(`${tabName}-section`).classList.add('active');
-            event.target.classList.add('active');
+            if (event && event.target) {
+                event.target.classList.add('active');
+            }
             
             // Focus first input
             if (tabName === 'login') {
@@ -1785,7 +2184,7 @@ HTML_TEMPLATE = '''
             document.getElementById('settings-modal').style.display = 'none';
         }
 
-        function showSettingsTab(tabName) {
+        function showSettingsTab(tabName, event) {
             document.querySelectorAll('.settings-section').forEach(tab => {
                 tab.classList.remove('active');
             });
@@ -1794,7 +2193,9 @@ HTML_TEMPLATE = '''
             });
             
             document.getElementById(`${tabName}-tab`).classList.add('active');
-            event.target.classList.add('active');
+            if (event && event.target) {
+                event.target.classList.add('active');
+            }
         }
 
         function loadUserSettings() {
@@ -1945,93 +2346,362 @@ HTML_TEMPLATE = '''
         }
 
         // ========== CHAT FUNCTIONS ==========
-        function sendMessage() {
-            const input = document.getElementById('message-input');
-            const message = input.value.trim();
+function sendMessage() {
+    const input = document.getElementById('message-input');
+    const message = input.value.trim();
+    
+    if (!message || !currentUser) {
+        console.log('❌ Cannot send empty message or user not logged in');
+        showNotification('Cannot send empty message', 'error');
+        return;
+    }
+    
+    console.log('📤📤📤 SENDING MESSAGE - DEBUG:', {
+        message: message,
+        currentRoom: currentRoom,
+        currentUser: currentUser,
+        isDM: currentRoom.startsWith('dm_')
+    });
+    
+    // Check if we're in a private chat (DM)
+    if (currentRoom.startsWith('dm_')) {
+        const parts = currentRoom.split('_');
+        let friendUsername;
+        
+        if (parts.length === 3) {
+            const [_, user1, user2] = parts;
+            friendUsername = user1 === currentUser ? user2 : user1;
+        } else {
+            console.error('❌ Invalid DM room format:', currentRoom);
+            showNotification('Cannot send message: Invalid chat room', 'error');
+            return;
+        }
+        
+        console.log('📤 Sending private message to:', friendUsername);
+        
+        socket.emit('private_message', {
+            from: currentUser,
+            to: friendUsername,
+            message: message,
+            timestamp: new Date().toISOString()
+        });
+        
+    } else {
+        // Regular room message
+        console.log('📤 Sending room message to:', currentRoom);
+        socket.emit('message', {
+            username: currentUser,
+            message: message,
+            server: currentRoom,
+            timestamp: new Date().toISOString()
+        });
+    }
+    
+    // تنظيف حقل الإدخال
+    input.value = '';
+    input.focus();
+}
+
+// ✅✅ دالة addMessage واحدة فقط - مع فحص التكرار
+function addMessage(data) {
+    console.log('🖊️ Adding message to chat:', {
+        id: data.id,
+        from: data.username,
+        message: data.message.substring(0, 30) + '...'
+    });
+    
+    const messagesDiv = document.getElementById('chat-messages');
+    if (!messagesDiv) {
+        console.error('❌ Cannot add message: messagesDiv not found');
+        return;
+    }
+    
+    // ✅ تحقق من عدم تكرار الرسالة
+    const messageId = data.id || data.timestamp;
+    const existingMessage = messagesDiv.querySelector(`[data-message-id="${messageId}"]`);
+    if (existingMessage) {
+        console.log('⚠️ Message already exists, skipping:', messageId);
+        return;
+    }
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${data.username === currentUser ? 'own' : ''}`;
+    messageDiv.setAttribute('data-message-id', messageId);
+    messageDiv.style.position = 'relative';
+    messageDiv.style.animation = 'slideIn 0.3s ease';
+    
+    const canDelete = data.username === currentUser;
+    const firstLetter = data.username ? data.username.charAt(0).toUpperCase() : 'U';
+    
+    messageDiv.innerHTML = `
+        <div class="message-avatar">
+            <div class="avatar-placeholder" style="background: ${data.username === currentUser ? 'rgba(0, 229, 255, 0.3)' : 'rgba(67, 181, 129, 0.3)'};">
+                ${firstLetter}
+            </div>
+        </div>
+        <div class="message-content">
+            <div class="message-bubble" style="${data.username === currentUser ? 'background: rgba(0, 229, 255, 0.15);' : ''}">
+                <div class="message-header">
+                    <strong>${data.displayName || data.username || 'Unknown'}</strong>
+                    <span>${new Date(data.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                </div>
+                <div class="message-text">${escapeHtml(data.message)}</div>
+            </div>
+            ${canDelete ? `
+            <div class="message-actions">
+                <button class="msg-action-btn" onclick="deleteMessage('${messageId}')" title="Delete Message">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+            ` : ''}
+        </div>
+    `;
+    
+    messagesDiv.appendChild(messageDiv);
+    
+    setTimeout(() => {
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }, 50);
+    
+    console.log('✅ Message added successfully');
+}
+
+function deleteMessage(messageId) {
+    if (confirm('Delete this message?')) {
+        socket.emit('delete_message', {
+            message_id: messageId,
+            room_id: currentRoom,
+            username: currentUser
+        });
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ========== VOICE MESSAGE FUNCTIONS ==========
+        async function startVoiceRecording() {
+            if (isRecording) return;
             
-            if (!message || !currentUser) {
-                console.log('❌ Cannot send empty message or user not logged in');
+            try {
+                recordingStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    } 
+                });
+                
+                mediaRecorder = new MediaRecorder(recordingStream, {
+                    mimeType: 'audio/webm;codecs=opus'
+                });
+                
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+                
+                mediaRecorder.onstop = () => {
+                    sendVoiceMessage();
+                };
+                
+                mediaRecorder.start();
+                isRecording = true;
+                recordingStartTime = Date.now();
+                
+                document.getElementById('voice-record-btn').classList.add('recording');
+                document.getElementById('voice-recording-indicator').classList.add('active');
+                document.getElementById('voice-cancel-btn').classList.add('active');
+                
+                updateRecordingTimer();
+                recordingTimer = setInterval(updateRecordingTimer, 1000);
+                
+                console.log('🎤 Voice recording started');
+                
+            } catch (error) {
+                console.error('❌ Error accessing microphone:', error);
+                showNotification('Cannot access microphone. Please grant permission.', 'error');
+            }
+        }
+
+        function stopVoiceRecording() {
+            if (!isRecording || !mediaRecorder) return;
+            
+            const duration = Date.now() - recordingStartTime;
+            if (duration < 1000) {
+                cancelVoiceRecording();
+                showNotification('Recording too short. Hold for at least 1 second.', 'error');
                 return;
             }
             
-            console.log('📨 Attempting to send message:', {
-                message: message,
-                currentRoom: currentRoom,
-                currentUser: currentUser
-            });
+            mediaRecorder.stop();
+            isRecording = false;
             
-            // Check if we're in a private chat (DM)
-            if (currentRoom.startsWith('dm_')) {
-                // Extract friend username from room ID
-                const parts = currentRoom.split('_');
-                let friendUsername;
-                
-                if (parts.length === 3) {
-                    // If room ID is dm_user1_user2
-                    const [_, user1, user2] = parts;
-                    friendUsername = user1 === currentUser ? user2 : user1;
-                } else if (parts.length === 2) {
-                    // If room ID is dm_friend (legacy format)
-                    friendUsername = parts[1];
-                } else {
-                    showNotification('Invalid private chat room', 'error');
-                    return;
-                }
-                
-                console.log('📨 Sending private message to:', friendUsername);
-                
-                socket.emit('private_message', {
-                    from: currentUser,
-                    to: friendUsername,
-                    message: message,
-                    timestamp: new Date().toISOString()
-                });
-            } else {
-                // Regular room message
-                console.log('📨 Sending room message to:', currentRoom);
-                socket.emit('message', {
-                    username: currentUser,
-                    message: message,
-                    server: currentRoom,
-                    timestamp: new Date().toISOString()
-                });
+            if (recordingStream) {
+                recordingStream.getTracks().forEach(track => track.stop());
             }
             
-            input.value = '';
-            input.focus();
+            if (recordingTimer) {
+                clearInterval(recordingTimer);
+                recordingTimer = null;
+            }
+            
+            document.getElementById('voice-record-btn').classList.remove('recording');
+            document.getElementById('voice-recording-indicator').classList.remove('active');
+            document.getElementById('voice-cancel-btn').classList.remove('active');
+            
+            console.log('🎤 Voice recording stopped');
         }
 
-        function addMessage(data) {
+        function cancelVoiceRecording() {
+            if (!isRecording) return;
+            
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+            
+            isRecording = false;
+            audioChunks = [];
+            
+            if (recordingStream) {
+                recordingStream.getTracks().forEach(track => track.stop());
+            }
+            
+            if (recordingTimer) {
+                clearInterval(recordingTimer);
+                recordingTimer = null;
+            }
+            
+            document.getElementById('voice-record-btn').classList.remove('recording');
+            document.getElementById('voice-recording-indicator').classList.remove('active');
+            document.getElementById('voice-cancel-btn').classList.remove('active');
+            
+            showNotification('Recording cancelled', 'info');
+            console.log('🎤 Voice recording cancelled');
+        }
+
+        function updateRecordingTimer() {
+            if (!recordingStartTime) return;
+            
+            const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            
+            document.getElementById('recording-timer').textContent = 
+                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            
+            if (elapsed >= 60) {
+                stopVoiceRecording();
+            }
+        }
+
+        async function sendVoiceMessage() {
+            if (audioChunks.length === 0) return;
+            
+            try {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm;codecs=opus' });
+                const duration = Math.floor((Date.now() - recordingStartTime) / 1000);
+                
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const base64Audio = reader.result;
+                    
+                    console.log('📤 Sending voice message:', {
+                        size: audioBlob.size,
+                        duration: duration,
+                        room: currentRoom
+                    });
+                    
+                    if (currentRoom.startsWith('dm_')) {
+                        const parts = currentRoom.split('_');
+                        if (parts.length === 3) {
+                            const [_, user1, user2] = parts;
+                            const friendUsername = user1 === currentUser ? user2 : user1;
+                            
+                            socket.emit('private_voice_message', {
+                                from: currentUser,
+                                to: friendUsername,
+                                audioData: base64Audio,
+                                duration: duration,
+                                timestamp: new Date().toISOString()
+                            });
+                        }
+                    } else {
+                        socket.emit('voice_message', {
+                            username: currentUser,
+                            server: currentRoom,
+                            audioData: base64Audio,
+                            duration: duration,
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                    
+                    showNotification('Voice message sent!', 'success');
+                };
+                
+                reader.readAsDataURL(audioBlob);
+                
+            } catch (error) {
+                console.error('❌ Error sending voice message:', error);
+                showNotification('Failed to send voice message', 'error');
+            }
+        }
+
+        function addVoiceMessage(data) {
+            console.log('🎤 Adding voice message to chat');
+            
             const messagesDiv = document.getElementById('chat-messages');
+            if (!messagesDiv) return;
+            
+            const messageId = data.id || data.timestamp;
+            const existingMessage = messagesDiv.querySelector(`[data-message-id="${messageId}"]`);
+            if (existingMessage) {
+                console.log('⚠️ Voice message already exists, skipping');
+                return;
+            }
             
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${data.username === currentUser ? 'own' : ''}`;
-            messageDiv.setAttribute('data-message-id', data.id || data.timestamp);
+            messageDiv.setAttribute('data-message-id', messageId);
             messageDiv.style.position = 'relative';
+            messageDiv.style.animation = 'slideIn 0.3s ease';
             
-            // Check if current user can delete this message
             const canDelete = data.username === currentUser;
-            
-            // Get first letter for avatar
             const firstLetter = data.username ? data.username.charAt(0).toUpperCase() : 'U';
+            const audioId = `audio-${messageId}`;
             
             messageDiv.innerHTML = `
                 <div class="message-avatar">
-                    <div class="avatar-placeholder">
+                    <div class="avatar-placeholder" style="background: ${data.username === currentUser ? 'rgba(0, 229, 255, 0.3)' : 'rgba(67, 181, 129, 0.3)'};">
                         ${firstLetter}
                     </div>
                 </div>
                 <div class="message-content">
-                    <div class="message-bubble">
+                    <div class="message-bubble" style="${data.username === currentUser ? 'background: rgba(0, 229, 255, 0.15);' : ''}">
                         <div class="message-header">
                             <strong>${data.displayName || data.username || 'Unknown'}</strong>
                             <span>${new Date(data.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                         </div>
-                        <div class="message-text">${escapeHtml(data.message)}</div>
+                        <div class="voice-message">
+                            <button class="voice-play-btn" onclick="toggleVoicePlayback('${audioId}', this)">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <div class="voice-waveform">
+                                <div class="voice-progress" id="progress-${audioId}" style="width: 0%"></div>
+                            </div>
+                            <span class="voice-duration">${formatDuration(data.duration || 0)}</span>
+                            <audio id="${audioId}" src="${data.audioData}" preload="metadata" style="display: none;"></audio>
+                        </div>
                     </div>
                     ${canDelete ? `
                     <div class="message-actions">
-                        <button class="msg-action-btn" onclick="deleteMessage('${data.id || data.timestamp}')" title="Delete Message">
+                        <button class="msg-action-btn" onclick="deleteMessage('${messageId}')" title="Delete Message">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
@@ -2040,177 +2710,217 @@ HTML_TEMPLATE = '''
             `;
             
             messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
             
-            console.log('📨 Message added to chat:', {
-                id: data.id,
-                from: data.username,
-                message: data.message.substring(0, 50) + '...'
-            });
-        }
-
-        function deleteMessage(messageId) {
-            if (confirm('Delete this message?')) {
-                socket.emit('delete_message', {
-                    message_id: messageId,
-                    room_id: currentRoom,
-                    username: currentUser
+            const audio = document.getElementById(audioId);
+            if (audio) {
+                audio.addEventListener('timeupdate', () => {
+                    const progress = (audio.currentTime / audio.duration) * 100;
+                    const progressBar = document.getElementById(`progress-${audioId}`);
+                    if (progressBar) {
+                        progressBar.style.width = `${progress}%`;
+                    }
+                });
+                
+                audio.addEventListener('ended', () => {
+                    const btn = messageDiv.querySelector('.voice-play-btn');
+                    if (btn) {
+                        btn.classList.remove('playing');
+                        btn.innerHTML = '<i class="fas fa-play"></i>';
+                    }
+                    const progressBar = document.getElementById(`progress-${audioId}`);
+                    if (progressBar) {
+                        progressBar.style.width = '0%';
+                    }
                 });
             }
+            
+            setTimeout(() => {
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }, 50);
+            
+            console.log('✅ Voice message added successfully');
         }
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // ========== ROOM FUNCTIONS ==========
-        function updateRoomList(rooms) {
-            const list = document.getElementById('servers-list');
-            list.innerHTML = '';
+        function toggleVoicePlayback(audioId, button) {
+            const audio = document.getElementById(audioId);
+            if (!audio) return;
             
-            // Add private chats first
-            Object.keys(privateChats).forEach(friend => {
-                const roomDiv = document.createElement('div');
-                roomDiv.className = 'nav-item';
-                roomDiv.innerHTML = `
-                    <i class="fas fa-user-friends" style="color: #43b581"></i>
-                    <span>${friend}</span>
-                    <span class="room-type-badge dm">DM</span>
-                `;
-                
-                roomDiv.onclick = () => {
-                    joinPrivateChat(friend, privateChats[friend]);
-                };
-                
-                list.appendChild(roomDiv);
-            });
-            
-            // Add separator if there are both private chats and rooms
-            if (Object.keys(privateChats).length > 0 && rooms && rooms.length > 0) {
-                const separator = document.createElement('div');
-                separator.style.padding = '10px';
-                separator.style.opacity = '0.7';
-                separator.style.textAlign = 'center';
-                separator.innerHTML = '─ ROOMS ─';
-                list.appendChild(separator);
-            }
-            
-            if (!rooms || rooms.length === 0) {
-                if (Object.keys(privateChats).length === 0) {
-                    list.innerHTML = '<div style="padding: 10px; opacity: 0.7; text-align: center;">No rooms yet</div>';
+            document.querySelectorAll('audio').forEach(a => {
+                if (a.id !== audioId && !a.paused) {
+                    a.pause();
+                    a.currentTime = 0;
                 }
-                return;
-            }
-            
-            rooms.forEach(room => {
-                addRoomToList(room);
             });
+            
+            document.querySelectorAll('.voice-play-btn').forEach(btn => {
+                if (btn !== button) {
+                    btn.classList.remove('playing');
+                    btn.innerHTML = '<i class="fas fa-play"></i>';
+                }
+            });
+            
+            if (audio.paused) {
+                audio.play();
+                button.classList.add('playing');
+                button.innerHTML = '<i class="fas fa-pause"></i>';
+            } else {
+                audio.pause();
+                button.classList.remove('playing');
+                button.innerHTML = '<i class="fas fa-play"></i>';
+            }
         }
 
-        function addRoomToList(room) {
-            const list = document.getElementById('servers-list');
-            const roomDiv = document.createElement('div');
-            roomDiv.className = 'nav-item';
-            
-            let icon = 'fa-hashtag';
-            if (room.type === 'voice') icon = 'fa-volume-up';
-            if (room.type === 'private') icon = 'fa-lock';
-            
-            roomDiv.innerHTML = `
-                <i class="fas ${icon}"></i>
-                <span>${room.name}</span>
-                ${room.type !== 'public' ? `<span class="room-type-badge ${room.type}">${room.type}</span>` : ''}
-            `;
-            
-            roomDiv.onclick = () => {
-                joinRoom(room.id, room.name);
-            };
-            
+        function formatDuration(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+// ========== ROOM FUNCTIONS ==========
+function updateRoomList(rooms) {
+    const list = document.getElementById('servers-list');
+    list.innerHTML = '';
+    
+    // Add private chats first
+    Object.keys(privateChats).forEach(friend => {
+        const roomDiv = document.createElement('div');
+        roomDiv.className = 'nav-item';
+        roomDiv.innerHTML = `
+            <i class="fas fa-user-friends" style="color: #43b581"></i>
+            <span>${friend}</span>
+            <span class="room-type-badge dm">DM</span>
+        `;
+        
+        roomDiv.onclick = () => {
+            joinPrivateChat(friend, privateChats[friend]);
+        };
+        
+        list.appendChild(roomDiv);
+    });
+    
+    // Add separator if there are both private chats and rooms
+    if (Object.keys(privateChats).length > 0 && rooms && rooms.length > 0) {
+        const separator = document.createElement('div');
+        separator.style.padding = '10px';
+        separator.style.opacity = '0.7';
+        separator.style.textAlign = 'center';
+        separator.innerHTML = '─ ROOMS ─';
+        list.appendChild(separator);
+    }
+    
+    if (!rooms || rooms.length === 0) {
+        if (Object.keys(privateChats).length === 0) {
+            list.innerHTML = '<div style="padding: 10px; opacity: 0.7; text-align: center;">No rooms yet</div>';
+        }
+        return;
+    }
+    
+    rooms.forEach(room => {
+        addRoomToList(room);
+    });
+}
+
+function addRoomToList(room) {
+    const list = document.getElementById('servers-list');
+    const roomDiv = document.createElement('div');
+    roomDiv.className = 'nav-item';
+    
+    let icon = 'fa-hashtag';
+    if (room.type === 'voice') icon = 'fa-volume-up';
+    if (room.type === 'private') icon = 'fa-lock';
+    
+    roomDiv.innerHTML = `
+        <i class="fas ${icon}"></i>
+        <span>${room.name}</span>
+        ${room.type !== 'public' ? `<span class="room-type-badge ${room.type}">${room.type}</span>` : ''}
+    `;
+    
+    roomDiv.onclick = () => {
+        joinRoom(room.id, room.name);
+    };
+    
+    list.appendChild(roomDiv);
+}
+
+function addPrivateChatToList(friend, roomId) {
+    const list = document.getElementById('servers-list');
+    
+    // Check if already exists
+    const existing = Array.from(list.children).find(item => 
+        item.textContent.includes(friend) && item.textContent.includes('DM')
+    );
+    
+    if (!existing) {
+        const roomDiv = document.createElement('div');
+        roomDiv.className = 'nav-item';
+        roomDiv.innerHTML = `
+            <i class="fas fa-user-friends" style="color: #43b581"></i>
+            <span>${friend}</span>
+            <span class="room-type-badge dm">DM</span>
+        `;
+        
+        roomDiv.onclick = () => {
+            joinPrivateChat(friend, roomId);
+        };
+        
+        // Insert at the beginning (before rooms)
+        const firstRoom = list.querySelector('.nav-item:not([style*="opacity: 0.7"])');
+        if (firstRoom) {
+            list.insertBefore(roomDiv, firstRoom);
+        } else {
             list.appendChild(roomDiv);
         }
+    }
+}
 
-        function addPrivateChatToList(friend, roomId) {
-            const list = document.getElementById('servers-list');
-            
-            // Check if already exists
-            const existing = Array.from(list.children).find(item => 
-                item.textContent.includes(friend) && item.textContent.includes('DM')
-            );
-            
-            if (!existing) {
-                const roomDiv = document.createElement('div');
-                roomDiv.className = 'nav-item';
-                roomDiv.innerHTML = `
-                    <i class="fas fa-user-friends" style="color: #43b581"></i>
-                    <span>${friend}</span>
-                    <span class="room-type-badge dm">DM</span>
-                `;
-                
-                roomDiv.onclick = () => {
-                    joinPrivateChat(friend, roomId);
-                };
-                
-                // Insert at the beginning (before rooms)
-                const firstRoom = list.querySelector('.nav-item:not([style*="opacity: 0.7"])');
-                if (firstRoom) {
-                    list.insertBefore(roomDiv, firstRoom);
-                } else {
-                    list.appendChild(roomDiv);
-                }
-            }
-        }
+function joinRoom(roomId, roomName) {
+    console.log('🚪 Joining room:', roomId, roomName);
+    currentRoom = roomId;
+    document.getElementById('current-chat-name').innerHTML = 
+        `<i class="fas fa-hashtag"></i> ${roomName}`;
+    
+    document.getElementById('chat-messages').innerHTML = '';
+    
+    socket.emit('join_room', { 
+        room: roomId, 
+        username: currentUser 
+    });
+    
+    socket.emit('get_room_messages', { room: roomId });
+    
+    // Update room header
+    updateRoomHeader();
+}
 
-        function joinRoom(roomId, roomName) {
-            console.log('🚪 Joining room:', roomId, roomName);
-            currentRoom = roomId;
-            document.getElementById('current-chat-name').innerHTML = 
-                `<i class="fas fa-hashtag"></i> ${roomName}`;
-            
-            document.getElementById('chat-messages').innerHTML = '';
-            
-            socket.emit('join_room', { 
-                room: roomId, 
-                username: currentUser 
-            });
-            
-            socket.emit('get_room_messages', { room: roomId });
-            
-            // Update room header
-            updateRoomHeader();
-        }
-
-        function joinPrivateChat(friend, roomId) {
-            console.log('🚪 Joining private chat with:', friend);
-            
-            // Create consistent room ID
-            const sortedUsers = [currentUser, friend].sort();
-            const consistentRoomId = `dm_${sortedUsers[0]}_${sortedUsers[1]}`;
-            currentRoom = consistentRoomId;
-            
-            document.getElementById('current-chat-name').innerHTML = 
-                `<i class="fas fa-user-friends" style="color: #43b581"></i> ${friend}`;
-            
-            document.getElementById('chat-messages').innerHTML = '';
-            
-            // Load private messages
-            socket.emit('get_private_messages', {
-                username: currentUser,
-                friend: friend
-            });
-            
-            // Join the private chat room
-            socket.emit('join_room', {
-                username: currentUser,
-                room: consistentRoomId
-            });
-            
-            // Update room header for DM
-            updateRoomHeader();
-            
-            console.log('✅ Joined private chat:', consistentRoomId);
-        }
+function joinPrivateChat(friend, roomId) {
+    console.log('🚪 Joining private chat with:', friend);
+    
+    // Create consistent room ID
+    const sortedUsers = [currentUser, friend].sort();
+    const consistentRoomId = `dm_${sortedUsers[0]}_${sortedUsers[1]}`;
+    currentRoom = consistentRoomId;
+    
+    document.getElementById('current-chat-name').innerHTML = 
+        `<i class="fas fa-user-friends" style="color: #43b581"></i> ${friend}`;
+    
+    document.getElementById('chat-messages').innerHTML = '';
+    
+    // Load private messages
+    socket.emit('get_private_messages', {
+        username: currentUser,
+        friend: friend
+    });
+    
+    // Join the private chat room
+    socket.emit('join_room', {
+        username: currentUser,
+        room: consistentRoomId
+    });
+    
+    // Update room header for DM
+    updateRoomHeader();
+    
+    console.log('✅ Joined private chat:', consistentRoomId);
+}
 
         function updateRoomHeader() {
             const actions = document.getElementById('room-header-actions');
@@ -2406,9 +3116,26 @@ HTML_TEMPLATE = '''
         }
 
         function showFriendRequestsModal() {
-            document.getElementById('friend-requests-modal').style.display = 'flex';
-            updateFriendRequestsList();
-        }
+    console.log('🔄 Opening friend requests modal for user:', currentUser);
+    
+    // إظهار النافذة
+    document.getElementById('friend-requests-modal').style.display = 'flex';
+    
+    // تنظيف القائمة وإظهار رسالة تحميل
+    const list = document.getElementById('friend-requests-list');
+    list.innerHTML = '<div style="padding: 30px; text-align: center; opacity: 0.7;">Loading friend requests...</div>';
+    
+    // طلب البيانات من السيرفر
+    if (currentUser) {
+        console.log('📤 Sending get_friend_requests for:', currentUser);
+        socket.emit('get_friend_requests', { 
+            username: currentUser 
+        });
+    } else {
+        console.log('❌ Cannot get friend requests: No current user');
+        list.innerHTML = '<div style="padding: 30px; text-align: center; opacity: 0.7;">Please login first</div>';
+    }
+}
 
         function hideFriendRequestsModal() {
             document.getElementById('friend-requests-modal').style.display = 'none';
@@ -2759,7 +3486,7 @@ def save_data():
                 'friend_requests_db': friend_requests_db,
                 'sessions_db': sessions_db,
                 'private_messages_db': private_messages_db
-            }, f, indent=2, default=str)
+            }, f, indent=2, cls=DateTimeEncoder)  # استخدام الـ encoder المخصص
         print(f"💾 Data saved to {DATA_FILE}")
     except Exception as e:
         print(f"❌ Error saving data: {e}")
@@ -3387,8 +4114,123 @@ def handle_message(data):
     print(f"📨 Room message sent: {username} -> {server}: {message_text[:50]}...")
     emit('message', message, room=server)
 
+@socketio.on('voice_message')
+def handle_voice_message(data):
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    username = session['username']
+    audio_data = data.get('audioData')
+    duration = data.get('duration', 0)
+    server = data.get('server')
+    timestamp = data.get('timestamp', datetime.now().isoformat())
+    
+    if not audio_data or not server:
+        return
+    
+    message_id = str(uuid.uuid4())[:8]
+    user_settings = user_settings_db.get(username, {})
+    
+    message = {
+        'id': message_id,
+        'username': username,
+        'displayName': user_settings.get('displayName', username),
+        'audioData': audio_data,
+        'duration': duration,
+        'server': server,
+        'timestamp': timestamp,
+        'type': 'voice'
+    }
+    
+    if server not in messages_db:
+        messages_db[server] = []
+    messages_db[server].append(message)
+    
+    if len(messages_db[server]) > 500:
+        messages_db[server] = messages_db[server][-500:]
+    
+    save_data()
+    
+    print(f"🎤 Voice message sent: {username} -> {server} ({duration}s)")
+    emit('voice_message', message, room=server)
+
+@socketio.on('private_voice_message')
+def handle_private_voice_message(data):
+    print("🎤 SERVER: private_voice_message received")
+    
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    from_user = session['username']
+    to_user = data.get('to')
+    audio_data = data.get('audioData')
+    duration = data.get('duration', 0)
+    timestamp = data.get('timestamp', datetime.now().isoformat())
+    
+    if not to_user or not audio_data:
+        emit('private_message_error', {'message': 'Missing required fields'})
+        return
+    
+    if not are_friends(from_user, to_user):
+        emit('private_message_error', {'message': 'You can only message friends'})
+        return
+    
+    key = get_private_chat_key(from_user, to_user)
+    
+    if key not in private_messages_db:
+        private_messages_db[key] = []
+    
+    message_id = str(uuid.uuid4())[:8]
+    from_settings = user_settings_db.get(from_user, {})
+    
+    sorted_users = sorted([from_user, to_user])
+    room_id = f"dm_{sorted_users[0]}_{sorted_users[1]}"
+    
+    message_data = {
+        'id': message_id,
+        'from': from_user,
+        'to': to_user,
+        'audioData': audio_data,
+        'duration': duration,
+        'timestamp': timestamp,
+        'room_id': room_id,
+        'type': 'voice'
+    }
+    
+    private_messages_db[key].append(message_data)
+    
+    if len(private_messages_db[key]) > 1000:
+        private_messages_db[key] = private_messages_db[key][-1000:]
+    
+    save_data()
+    
+    formatted_message = {
+        'id': message_id,
+        'from': from_user,
+        'to': to_user,
+        'audioData': audio_data,
+        'duration': duration,
+        'timestamp': timestamp,
+        'displayName': from_settings.get('displayName', from_user),
+        'room_id': room_id,
+        'type': 'voice'
+    }
+    
+    socketio.emit('private_voice_message', formatted_message, room=room_id)
+    
+    print(f"✅ Private voice message sent: {from_user} -> {to_user} ({duration}s)")
+
 @socketio.on('private_message')
 def handle_private_message(data):
+    print("🔥🔥🔥 SERVER: private_message received")
+    print(f"From: {data.get('from')}")
+    print(f"To: {data.get('to')}")
+    print(f"Message: {data.get('message')[:50]}...")
+    
     session = check_auth(request.sid)
     if not session:
         emit('session_expired', {'message': 'Please login again'})
@@ -3417,6 +4259,7 @@ def handle_private_message(data):
     
     # Get display names
     from_settings = user_settings_db.get(from_user, {})
+    to_settings = user_settings_db.get(to_user, {})
     
     # Prepare message for both users
     formatted_message = {
@@ -3430,10 +4273,203 @@ def handle_private_message(data):
         'type': 'private'
     }
     
-        # Send ONLY to the room (not individually)
+    print(f"📨 Broadcasting to room: {room_id}")
+    print(f"📨 Message data: {formatted_message}")
+    
+    # إرسال تأكيد للمرسل أولاً
+    emit('private_message_sent', {
+        'id': message_data['id'],
+        'message': message_text,
+        'timestamp': timestamp,
+        'type': 'private'
+    }, room=request.sid)
+    
+    # ثم إرسال الرسالة للغرفة (للمرسل والمستقبل)
     socketio.emit('private_message', formatted_message, room=room_id)
     
-    print(f"📨 Private message sent: {from_user} -> {to_user}: {message_text[:50]}...")
+    print(f"✅✅✅ Private message sent successfully: {from_user} -> {to_user}")
+
+
+@socketio.on('voice_message')
+def handle_voice_message(data):
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    username = session['username']
+    audio_data = data.get('audioData')
+    duration = data.get('duration', 0)
+    server = data.get('server')
+    timestamp = data.get('timestamp', datetime.now().isoformat())
+    
+    if not audio_data or not server:
+        return
+    
+    message_id = str(uuid.uuid4())[:8]
+    user_settings = user_settings_db.get(username, {})
+    
+    message = {
+        'id': message_id,
+        'username': username,
+        'displayName': user_settings.get('displayName', username),
+        'audioData': audio_data,
+        'duration': duration,
+        'server': server,
+        'timestamp': timestamp,
+        'type': 'voice'
+    }
+    
+    if server not in messages_db:
+        messages_db[server] = []
+    messages_db[server].append(message)
+    
+    if len(messages_db[server]) > 500:
+        messages_db[server] = messages_db[server][-500:]
+    
+    save_data()
+    
+    print(f"🎤 Voice message sent: {username} -> {server} ({duration}s)")
+    emit('voice_message', message, room=server)
+
+
+@socketio.on('private_voice_message')
+def handle_private_voice_message(data):
+    print("🎤 SERVER: private_voice_message received")
+    
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    from_user = session['username']
+    to_user = data.get('to')
+    audio_data = data.get('audioData')
+    duration = data.get('duration', 0)
+    timestamp = data.get('timestamp', datetime.now().isoformat())
+    
+    if not to_user or not audio_data:
+        emit('private_message_error', {'message': 'Missing required fields'})
+        return
+    
+    if not are_friends(from_user, to_user):
+        emit('private_message_error', {'message': 'You can only message friends'})
+        return
+    
+    key = get_private_chat_key(from_user, to_user)
+    
+    if key not in private_messages_db:
+        private_messages_db[key] = []
+    
+    message_id = str(uuid.uuid4())[:8]
+    from_settings = user_settings_db.get(from_user, {})
+    
+    sorted_users = sorted([from_user, to_user])
+    room_id = f"dm_{sorted_users[0]}_{sorted_users[1]}"
+    
+    message_data = {
+        'id': message_id,
+        'from': from_user,
+        'to': to_user,
+        'audioData': audio_data,
+        'duration': duration,
+        'timestamp': timestamp,
+        'room_id': room_id,
+        'type': 'voice'
+    }
+    
+    private_messages_db[key].append(message_data)
+    
+    if len(private_messages_db[key]) > 1000:
+        private_messages_db[key] = private_messages_db[key][-1000:]
+    
+    save_data()
+    
+    formatted_message = {
+        'id': message_id,
+        'from': from_user,
+        'to': to_user,
+        'audioData': audio_data,
+        'duration': duration,
+        'timestamp': timestamp,
+        'displayName': from_settings.get('displayName', from_user),
+        'room_id': room_id,
+        'type': 'voice'
+    }
+    
+    socketio.emit('private_voice_message', formatted_message, room=room_id)
+    
+    print(f"✅ Private voice message sent: {from_user} -> {to_user} ({duration}s)")
+
+@socketio.on('private_voice_message')
+def handle_private_voice_message(data):
+    print("🎤 SERVER: private_voice_message received")
+    
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    from_user = session['username']
+    to_user = data.get('to')
+    audio_data = data.get('audioData')
+    duration = data.get('duration', 0)
+    timestamp = data.get('timestamp', datetime.now().isoformat())
+    
+    if not to_user or not audio_data:
+        emit('private_message_error', {'message': 'Missing required fields'})
+        return
+    
+    if not are_friends(from_user, to_user):
+        emit('private_message_error', {'message': 'You can only message friends'})
+        return
+    
+    key = get_private_chat_key(from_user, to_user)
+    
+    if key not in private_messages_db:
+        private_messages_db[key] = []
+    
+    message_id = str(uuid.uuid4())[:8]
+    from_settings = user_settings_db.get(from_user, {})
+    
+    sorted_users = sorted([from_user, to_user])
+    room_id = f"dm_{sorted_users[0]}_{sorted_users[1]}"
+    
+    message_data = {
+        'id': message_id,
+        'from': from_user,
+        'to': to_user,
+        'audioData': audio_data,
+        'duration': duration,
+        'timestamp': timestamp,
+        'room_id': room_id,
+        'type': 'voice'
+    }
+    
+    private_messages_db[key].append(message_data)
+    
+    if len(private_messages_db[key]) > 1000:
+        private_messages_db[key] = private_messages_db[key][-1000:]
+    
+    save_data()
+    
+    formatted_message = {
+        'id': message_id,
+        'from': from_user,
+        'to': to_user,
+        'audioData': audio_data,
+        'duration': duration,
+        'timestamp': timestamp,
+        'displayName': from_settings.get('displayName', from_user),
+        'room_id': room_id,
+        'type': 'voice'
+    }
+    
+    socketio.emit('private_voice_message', formatted_message, room=room_id)
+    
+    print(f"✅ Private voice message sent: {from_user} -> {to_user} ({duration}s)")
+
+
 
 @socketio.on('get_private_messages')
 def handle_get_private_messages(data):
