@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 """
-EchoRoom - Discord-like Voice & Text Chat with Avatar System
-COMPLETELY FIXED AND WORKING
+EchoRoom - Secure Voice & Text Chat with Gmail Validation
+FIXED VERSION - No Syntax Errors
 """
 
 import uuid
 import hashlib
 import json
 import os
-from datetime import datetime
+import smtplib
+import ssl
+import re
+import secrets
+from datetime import datetime, timedelta
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from flask import Flask, render_template_string, request
-from flask_socketio import SocketIO, emit, join_room
+from flask_socketio import SocketIO, emit, join_room, leave_room
 
 # Initialize Flask app FIRST
 app = Flask(__name__)
@@ -21,7 +27,124 @@ socketio = SocketIO(app,
                    cors_allowed_origins="*",
                    async_mode='threading')
 
-# ==================== HTML TEMPLATE ====================
+# Email Configuration (REPLACE WITH REAL CREDENTIALS)
+EMAIL_SENDER = "amuhanad881@gmail.com"  # Replace with real Gmail
+EMAIL_PASSWORD = "ajgk fqfk uifj nnml"  # Replace with Gmail App Password
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+
+# Email validation regex
+EMAIL_REGEX = r'^[a-zA-Z0-9._%+-]+@gmail\.com$'
+
+# Session token expiry (30 days)
+SESSION_EXPIRY_DAYS = 30
+
+def is_valid_gmail(email):
+    """Check if email is a valid Gmail address"""
+    return re.match(EMAIL_REGEX, email) is not None
+
+def send_welcome_email(to_email, username, verification_token=None):
+    """Send welcome email to new users"""
+    try:
+        # Create message
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Welcome to EchoRoom!"
+        msg["From"] = EMAIL_SENDER
+        msg["To"] = to_email
+        
+        # HTML Email Content
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <div style="background: linear-gradient(135deg, #00e5ff, #00b8d4); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+                    <h1>🎤 EchoRoom</h1>
+                    <p>Your new space for real-time communication</p>
+                </div>
+                <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+                    <p>Hi {username} 👋,</p>
+                    
+                    <p>Welcome to <strong>EchoRoom</strong> — your new space for real-time voice and chat communication.</p>
+                    
+                    <p>At EchoRoom, you can:</p>
+                    <ul style="list-style: none; padding: 0;">
+                        <li style="margin: 10px 0; padding-left: 25px; position: relative;">✅ 🎙️ Join voice rooms and talk instantly with friends</li>
+                        <li style="margin: 10px 0; padding-left: 25px; position: relative;">✅ 💬 Chat in servers built around your interests</li>
+                        <li style="margin: 10px 0; padding-left: 25px; position: relative;">✅ 🌍 Create your own rooms and connect with people anywhere</li>
+                        <li style="margin: 10px 0; padding-left: 25px; position: relative;">✅ 🚀 Enjoy smooth, simple, and reliable communication</li>
+                    </ul>
+                    
+                    <p>We're excited to have you with us and can't wait to see the communities you'll build.</p>
+                    
+                    <p>If you have any questions or feedback, we're always listening.</p>
+                    
+                    <p>See you inside EchoRoom,<br>
+                    <strong>The EchoRoom Team</strong></p>
+                    
+                    <div style="text-align: center; margin-top: 30px; color: #666; font-size: 12px;">
+                        <p>This is an automated message, please do not reply to this email.</p>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Plain text version
+        text_content = f"""Hi {username} 👋,
+
+Welcome to **EchoRoom** — your new space for real-time voice and chat communication.
+
+At EchoRoom, you can:
+🎙️ Join voice rooms and talk instantly with friends
+💬 Chat in servers built around your interests
+🌍 Create your own rooms and connect with people anywhere
+🚀 Enjoy smooth, simple, and reliable communication
+
+We're excited to have you with us and can't wait to see the communities you'll build.
+
+If you have any questions or feedback, we're always listening.
+
+See you inside EchoRoom,
+**The EchoRoom Team**"""
+        
+        # Attach both versions
+        part1 = MIMEText(text_content, "plain")
+        part2 = MIMEText(html_content, "html")
+        msg.attach(part1)
+        msg.attach(part2)
+        
+        # Create secure SSL context
+        context = ssl.create_default_context()
+        
+        # Connect to SMTP server and send email
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
+            server.starttls(context=context)
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_SENDER, to_email, msg.as_string())
+        
+        print(f"📧 Welcome email sent to {to_email}")
+        return True
+    except Exception as e:
+        print(f"❌ Failed to send email: {e}")
+        return False
+
+def generate_session_token():
+    """Generate a secure session token"""
+    return secrets.token_urlsafe(32)
+
+def hash_password(password, salt=None):
+    """Hash password with salt"""
+    if salt is None:
+        salt = secrets.token_hex(16)
+    return hashlib.sha256((password + salt).encode()).hexdigest(), salt
+
+def verify_password(password, hashed_password, salt):
+    """Verify password against stored hash"""
+    return hashlib.sha256((password + salt).encode()).hexdigest() == hashed_password
+
+# ==================== HTML TEMPLATE WITH AUTO-LOGIN ====================
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -31,6 +154,7 @@ HTML_TEMPLATE = '''
     <title>🎤 EchoRoom - Voice & Text Chat</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
+        /* ALL YOUR ORIGINAL CSS STAYS THE SAME */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -351,6 +475,135 @@ HTML_TEMPLATE = '''
         }
         .auth-section { display: none; }
         .auth-section.active { display: block; }
+        
+        /* NEW: Gmail validation message */
+        .email-hint {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-top: 5px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .email-hint.valid {
+            color: #43b581;
+        }
+        .email-hint.invalid {
+            color: #ff2e63;
+        }
+        
+        /* NEW: Auto-login checkbox */
+        .remember-me {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .remember-me input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+        }
+        
+        /* NEW BUTTONS FOR FEATURES */
+        .action-btn {
+            padding: 8px 15px;
+            background: rgba(0, 229, 255, 0.1);
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .action-btn:hover {
+            background: rgba(0, 229, 255, 0.2);
+        }
+        .action-btn.delete {
+            background: rgba(255, 46, 99, 0.1);
+            border-color: rgba(255, 46, 99, 0.3);
+        }
+        .action-btn.delete:hover {
+            background: rgba(255, 46, 99, 0.2);
+        }
+        .action-btn.call {
+            background: rgba(67, 181, 129, 0.1);
+            border-color: rgba(67, 181, 129, 0.3);
+        }
+        .action-btn.call:hover {
+            background: rgba(67, 181, 129, 0.2);
+        }
+        .room-header-actions {
+            display: flex;
+            gap: 10px;
+            margin-left: 20px;
+        }
+        .friend-status {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: rgba(67, 181, 129, 0.2);
+            color: #43b581;
+            margin-left: auto;
+        }
+        .friend-status.offline {
+            background: rgba(255,255,255,0.1);
+            color: #888;
+        }
+        .message-actions {
+            opacity: 0;
+            transition: opacity 0.3s;
+            display: flex;
+            gap: 5px;
+            position: absolute;
+            right: 10px;
+            top: 10px;
+        }
+        .message:hover .message-actions {
+            opacity: 1;
+        }
+        .msg-action-btn {
+            background: rgba(0,0,0,0.5);
+            border: none;
+            color: white;
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .msg-action-btn:hover {
+            background: #00e5ff;
+        }
+        .invite-link-box {
+            background: rgba(255,255,255,0.05);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            word-break: break-all;
+            font-family: monospace;
+        }
+        .room-type-badge {
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: rgba(0, 229, 255, 0.2);
+            color: #00e5ff;
+            margin-left: 10px;
+        }
+        .room-type-badge.private {
+            background: rgba(255, 215, 0, 0.2);
+            color: #ffd700;
+        }
+        .room-type-badge.voice {
+            background: rgba(255, 46, 99, 0.2);
+            color: #ff2e63;
+        }
     </style>
 </head>
 <body>
@@ -372,37 +625,71 @@ HTML_TEMPLATE = '''
             
             <div id="login-section" class="auth-section active">
                 <div class="form-group">
-                    <label>Email</label>
-                    <input type="email" id="login-email" placeholder="test@test.com" value="test@test.com">
+                    <label>Email (Gmail required)</label>
+                    <input type="email" id="login-email" placeholder="your@gmail.com" 
+                           oninput="validateEmail(this, 'login-email-hint')">
+                    <div class="email-hint" id="login-email-hint">
+                        <i class="fas fa-info-circle"></i> Must be a valid Gmail address
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Password</label>
-                    <input type="password" id="login-password" placeholder="••••••••" value="123456">
+                    <input type="password" id="login-password" placeholder="••••••••">
+                </div>
+                <div class="remember-me">
+                    <input type="checkbox" id="remember-me" checked>
+                    <label for="remember-me">Remember me (Auto-login)</label>
                 </div>
                 <button class="btn" onclick="login()">
                     <i class="fas fa-sign-in-alt"></i> Login
                 </button>
                 <div style="margin-top: 15px; text-align: center; opacity: 0.7; font-size: 14px;">
-                    Test account pre-filled
+                    <button type="button" onclick="useTestAccount()" style="background: none; border: none; color: #00e5ff; cursor: pointer;">
+                        <i class="fas fa-flask"></i> Use Test Account
+                    </button>
                 </div>
             </div>
             
             <div id="signup-section" class="auth-section">
                 <div class="form-group">
                     <label>Username</label>
-                    <input type="text" id="signup-username" placeholder="Choose username">
+                    <input type="text" id="signup-username" placeholder="Choose username" 
+                           oninput="validateUsername(this)">
+                    <div class="email-hint" id="username-hint">
+                        <i class="fas fa-info-circle"></i> 3-20 characters, letters and numbers only
+                    </div>
                 </div>
                 <div class="form-group">
-                    <label>Email</label>
-                    <input type="email" id="signup-email" placeholder="your@email.com">
+                    <label>Email (Real Gmail required)</label>
+                    <input type="email" id="signup-email" placeholder="your@gmail.com" 
+                           oninput="validateEmail(this, 'signup-email-hint')">
+                    <div class="email-hint" id="signup-email-hint">
+                        <i class="fas fa-info-circle"></i> Must be a valid Gmail address (@gmail.com)
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Password</label>
-                    <input type="password" id="signup-password" placeholder="••••••••">
+                    <input type="password" id="signup-password" placeholder="••••••••" 
+                           oninput="validatePassword(this)">
+                    <div class="email-hint" id="password-hint">
+                        <i class="fas fa-info-circle"></i> Minimum 8 characters
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Confirm Password</label>
+                    <input type="password" id="signup-password-confirm" placeholder="••••••••" 
+                           oninput="validatePasswordConfirm(this)">
+                </div>
+                <div class="remember-me">
+                    <input type="checkbox" id="remember-signup" checked>
+                    <label for="remember-signup">Remember me (Auto-login)</label>
                 </div>
                 <button class="btn btn-success" onclick="signup()">
                     <i class="fas fa-user-plus"></i> Create Account
                 </button>
+                <div style="margin-top: 15px; text-align: center; opacity: 0.7; font-size: 12px;">
+                    <i class="fas fa-envelope"></i> Welcome email will be sent to your Gmail
+                </div>
             </div>
         </div>
     </div>
@@ -418,9 +705,7 @@ HTML_TEMPLATE = '''
             
             <div class="nav-section">
                 <h3>Rooms</h3>
-                <div id="servers-list">
-                    <!-- Rooms will be populated here -->
-                </div>
+                <div id="servers-list"></div>
                 <div class="nav-item" onclick="showCreateRoomModal()">
                     <i class="fas fa-plus"></i>
                     <span>Create Room</span>
@@ -429,16 +714,18 @@ HTML_TEMPLATE = '''
 
             <div class="nav-section">
                 <h3>Friends</h3>
-                <div id="friends-list" class="friends-list">
-                    <!-- Friends will appear here -->
-                </div>
+                <div id="friends-list" class="friends-list"></div>
                 <div class="nav-item" onclick="showAddFriendModal()">
                     <i class="fas fa-user-plus"></i>
                     <span>Add Friend</span>
                 </div>
+                <div class="nav-item" onclick="showFriendRequestsModal()">
+                    <i class="fas fa-user-clock"></i>
+                    <span>Friend Requests</span>
+                    <span class="badge" id="friend-requests-badge" style="display: none;">0</span>
+                </div>
             </div>
 
-            <!-- User Profile Section -->
             <div class="user-profile" onclick="showSettingsModal()" id="user-profile">
                 <div class="user-avatar" id="user-avatar-preview">
                     <div class="avatar-placeholder">
@@ -453,6 +740,9 @@ HTML_TEMPLATE = '''
                 <button class="upgrade-btn" id="upgrade-btn" onclick="event.stopPropagation(); showUpgradeModal()">
                     <i class="fas fa-crown"></i> Upgrade
                 </button>
+                <button class="upgrade-btn" id="logout-btn" onclick="event.stopPropagation(); logout()" style="margin-left: 10px; background: rgba(255, 46, 99, 0.2); color: #ff2e63;">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
             </div>
         </div>
 
@@ -462,6 +752,20 @@ HTML_TEMPLATE = '''
                 <h2 id="current-chat-name">
                     <i class="fas fa-hashtag"></i> General
                 </h2>
+                <div class="room-header-actions" id="room-header-actions" style="display: none;">
+                    <button class="action-btn" onclick="showInviteModal()" id="invite-btn">
+                        <i class="fas fa-link"></i> Invite
+                    </button>
+                    <button class="action-btn" onclick="leaveRoom()" id="leave-room-btn">
+                        <i class="fas fa-sign-out-alt"></i> Leave
+                    </button>
+                    <button class="action-btn delete" onclick="deleteRoom()" id="delete-room-btn" style="display: none;">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                    <button class="action-btn call" onclick="toggleCall()" id="call-btn" style="display: none;">
+                        <i class="fas fa-phone"></i> Call
+                    </button>
+                </div>
                 <div class="user-info">
                     <div id="connection-status" class="premium-badge">
                         <i class="fas fa-wifi"></i> Connected
@@ -469,9 +773,7 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
 
-            <div class="chat-messages" id="chat-messages">
-                <!-- Messages will appear here -->
-            </div>
+            <div class="chat-messages" id="chat-messages"></div>
 
             <div class="message-input-area">
                 <input type="text" class="message-input" id="message-input" 
@@ -498,10 +800,8 @@ HTML_TEMPLATE = '''
             </div>
             
             <div class="nav-section">
-                <h3>Online Users</h3>
-                <div id="online-users" class="friends-list">
-                    <!-- Online users will appear here -->
-                </div>
+                <h3>Room Members</h3>
+                <div id="room-members" class="friends-list"></div>
             </div>
         </div>
     </div>
@@ -524,6 +824,9 @@ HTML_TEMPLATE = '''
                 </button>
                 <button class="settings-tab" onclick="showSettingsTab('appearance')">
                     <i class="fas fa-palette"></i> Appearance
+                </button>
+                <button class="settings-tab" onclick="showSettingsTab('security')">
+                    <i class="fas fa-shield-alt"></i> Security
                 </button>
             </div>
 
@@ -591,6 +894,34 @@ HTML_TEMPLATE = '''
                     <i class="fas fa-save"></i> Save Appearance
                 </button>
             </div>
+
+            <!-- Security Tab -->
+            <div id="security-tab" class="settings-section">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="security-email" readonly style="background: rgba(255,255,255,0.05);">
+                </div>
+                
+                <div class="form-group">
+                    <label>Change Password</label>
+                    <input type="password" id="current-password" placeholder="Current password">
+                    <input type="password" id="new-password" placeholder="New password" style="margin-top: 10px;">
+                    <input type="password" id="confirm-new-password" placeholder="Confirm new password" style="margin-top: 10px;">
+                </div>
+                
+                <button class="btn btn-success" onclick="changePassword()">
+                    <i class="fas fa-key"></i> Change Password
+                </button>
+                
+                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <button class="btn btn-danger" onclick="logoutAllDevices()">
+                        <i class="fas fa-sign-out-alt"></i> Logout All Devices
+                    </button>
+                    <div style="font-size: 12px; opacity: 0.7; margin-top: 10px;">
+                        This will invalidate all active sessions
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -608,6 +939,16 @@ HTML_TEMPLATE = '''
             <div class="form-group">
                 <label for="room-name">Room Name</label>
                 <input type="text" id="room-name" placeholder="Enter room name">
+            </div>
+
+            <div class="form-group">
+                <label for="room-type">Room Type</label>
+                <select id="room-type">
+                    <option value="public">Public Room</option>
+                    <option value="private">Private Room (Friends Only)</option>
+                    <option value="voice">Voice Room</option>
+                    <option value="chat">Chat Room</option>
+                </select>
             </div>
 
             <div class="form-group">
@@ -642,6 +983,42 @@ HTML_TEMPLATE = '''
         </div>
     </div>
 
+    <div class="modal" id="friend-requests-modal">
+        <div class="settings-modal-content">
+            <button class="close-btn" onclick="hideFriendRequestsModal()">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div class="settings-header">
+                <h2><i class="fas fa-user-clock"></i> Friend Requests</h2>
+            </div>
+
+            <div id="friend-requests-list" style="max-height: 300px; overflow-y: auto;"></div>
+        </div>
+    </div>
+
+    <div class="modal" id="invite-modal">
+        <div class="settings-modal-content" style="max-width: 500px;">
+            <button class="close-btn" onclick="hideInviteModal()">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div class="settings-header">
+                <h2><i class="fas fa-link"></i> Invite Friends</h2>
+            </div>
+
+            <p>Share this link with your friends:</p>
+            
+            <div class="invite-link-box" id="invite-link">
+                Loading...
+            </div>
+
+            <button class="btn" onclick="copyInviteLink()">
+                <i class="fas fa-copy"></i> Copy Link
+            </button>
+        </div>
+    </div>
+
     <div class="modal" id="upgrade-modal">
         <div class="settings-modal-content">
             <button class="close-btn" onclick="hideUpgradeModal()">
@@ -650,7 +1027,7 @@ HTML_TEMPLATE = '''
             
             <div class="settings-header">
                 <h2><i class="fas fa-crown"></i> Upgrade to Premium</h2>
-                <p>Unlock exclusive features</p>
+                <p>Unlock exclusive features with monthly subscription</p>
             </div>
 
             <div style="text-align: center; margin-bottom: 30px;">
@@ -662,16 +1039,18 @@ HTML_TEMPLATE = '''
                     <li style="margin-bottom: 10px;">Custom profile banner</li>
                     <li style="margin-bottom: 10px;">HD avatar uploads</li>
                     <li style="margin-bottom: 10px;">Special badge on profile</li>
+                    <li style="margin-bottom: 10px;">Create unlimited rooms</li>
+                    <li style="margin-bottom: 10px;">Priority support</li>
                 </ul>
             </div>
 
             <div class="form-group">
-                <label for="owner-code">Owner Code</label>
-                <input type="text" id="owner-code" placeholder="Enter 'test' for testing">
+                <label for="upgrade-code">Monthly Upgrade Code</label>
+                <input type="text" id="upgrade-code" placeholder="Enter upgrade code (use 'test' for demo)">
             </div>
 
-            <button class="btn btn-premium" onclick="upgradeToPremium()">
-                <i class="fas fa-crown"></i> Activate Premium
+            <button class="btn btn-premium" onclick="upgradeAccount()">
+                <i class="fas fa-crown"></i> Activate Premium (Monthly)
             </button>
         </div>
     </div>
@@ -682,9 +1061,15 @@ HTML_TEMPLATE = '''
     <script>
         let socket;
         let currentUser = '';
+        let currentUserEmail = '';
         let isPremium = false;
         let currentRoom = 'general';
+        let currentRoomData = null;
         let userSettings = {};
+        let friendRequests = [];
+        let inCall = false;
+        let isRoomCreator = false;
+        let sessionToken = '';
 
         // Initialize WebSocket
         function initWebSocket() {
@@ -694,12 +1079,8 @@ HTML_TEMPLATE = '''
                 console.log('✅ Connected to EchoRoom');
                 showNotification('Connected to EchoRoom!', 'success');
                 
-                // Try to restore session
-                const savedUser = localStorage.getItem('echoRoomUser');
-                if (savedUser) {
-                    const userData = JSON.parse(savedUser);
-                    socket.emit('restore_session', userData);
-                }
+                // Try auto-login with saved session
+                tryAutoLogin();
             });
 
             socket.on('disconnect', () => {
@@ -707,10 +1088,29 @@ HTML_TEMPLATE = '''
                 showNotification('Disconnected from server', 'error');
             });
 
+            // Auto-login events
+            socket.on('auto_login_success', (data) => {
+                console.log('✅ Auto-login success:', data);
+                handleLoginSuccess(data);
+            });
+
+            socket.on('auto_login_error', (data) => {
+                console.log('❌ Auto-login failed');
+                // Show auth modal if auto-login fails
+                document.getElementById('auth-modal').style.display = 'flex';
+            });
+
             // Login/Signup events
             socket.on('login_success', (data) => {
                 console.log('✅ Login success:', data);
                 handleLoginSuccess(data);
+                
+                // Save session if remember me is checked
+                const rememberMe = document.getElementById('remember-me')?.checked || 
+                                  document.getElementById('remember-signup')?.checked;
+                if (rememberMe && data.session_token) {
+                    saveSession(data.email, data.session_token, data.username);
+                }
             });
 
             socket.on('login_error', (data) => {
@@ -720,8 +1120,11 @@ HTML_TEMPLATE = '''
 
             socket.on('signup_success', (data) => {
                 console.log('✅ Signup success:', data);
-                showNotification('Account created! Please login.', 'success');
+                showNotification('Account created! Welcome email sent. Please login.', 'success');
                 showAuthTab('login');
+                
+                // Auto-fill email
+                document.getElementById('login-email').value = data.email;
             });
 
             socket.on('signup_error', (data) => {
@@ -730,14 +1133,11 @@ HTML_TEMPLATE = '''
             });
 
             // Session events
-            socket.on('session_restored', (data) => {
-                console.log('✅ Session restored:', data);
-                handleLoginSuccess(data);
-            });
-
-            socket.on('session_error', (data) => {
-                console.log('❌ Session error:', data);
-                showNotification(data.message || 'Session expired', 'error');
+            socket.on('session_expired', (data) => {
+                console.log('❌ Session expired');
+                showNotification('Session expired. Please login again.', 'error');
+                clearSession();
+                document.getElementById('auth-modal').style.display = 'flex';
             });
 
             // Messages
@@ -752,6 +1152,14 @@ HTML_TEMPLATE = '''
                 messagesDiv.innerHTML = '';
                 if (messages && messages.length > 0) {
                     messages.forEach(msg => addMessage(msg));
+                }
+            });
+
+            socket.on('message_deleted', (data) => {
+                console.log('🗑️ Message deleted:', data);
+                const messageDiv = document.querySelector(`[data-message-id="${data.message_id}"]`);
+                if (messageDiv) {
+                    messageDiv.innerHTML = '<div style="opacity: 0.5; font-style: italic; padding: 10px;">Message deleted</div>';
                 }
             });
 
@@ -780,6 +1188,51 @@ HTML_TEMPLATE = '''
                 hideCreateRoomModal();
             });
 
+            socket.on('room_joined', (data) => {
+                console.log('✅ Room joined:', data);
+                currentRoomData = data.room;
+                updateRoomHeader();
+                updateRoomMembers(data.members || []);
+            });
+
+            socket.on('room_left', (data) => {
+                console.log('✅ Left room:', data);
+                showNotification(data.message || 'Left room', 'info');
+                if (currentRoom !== 'general') {
+                    currentRoom = 'general';
+                    joinRoom('general', 'General');
+                }
+            });
+
+            socket.on('room_deleted', (data) => {
+                console.log('🗑️ Room deleted:', data);
+                showNotification(data.message || 'Room deleted', 'info');
+                if (currentRoom !== 'general') {
+                    currentRoom = 'general';
+                    joinRoom('general', 'General');
+                }
+            });
+
+            socket.on('room_join_error', (data) => {
+                console.log('❌ Room join error:', data);
+                showNotification(data.message || 'Cannot join room', 'error');
+            });
+
+            socket.on('invite_link', (data) => {
+                console.log('🔗 Invite link:', data);
+                document.getElementById('invite-link').textContent = data.link;
+            });
+
+            socket.on('invite_link_error', (data) => {
+                console.log('❌ Invite link error:', data);
+                showNotification(data.message || 'Cannot generate invite', 'error');
+            });
+
+            socket.on('room_members_updated', (members) => {
+                console.log('👥 Room members updated:', members);
+                updateRoomMembers(members);
+            });
+
             // Friends
             socket.on('friends_list', (friends) => {
                 console.log('👥 Friends loaded:', friends);
@@ -797,12 +1250,42 @@ HTML_TEMPLATE = '''
                 showNotification(data.message || 'Friend request failed', 'error');
             });
 
+            socket.on('friend_requests', (data) => {
+                console.log('📬 Friend requests:', data.requests);
+                friendRequests = data.requests || [];
+                updateFriendRequestsList();
+                updateFriendRequestsBadge();
+            });
+
+            socket.on('friend_request_received', (data) => {
+                console.log('📬 Friend request received:', data);
+                showNotification(`${data.from} sent you a friend request!`, 'info');
+                socket.emit('get_friend_requests', { username: currentUser });
+            });
+
+            socket.on('friend_request_accepted', (data) => {
+                console.log('✅ Friend request accepted:', data);
+                showNotification(`${data.friend} accepted your friend request!`, 'success');
+            });
+
+            socket.on('friend_added', (data) => {
+                console.log('✅ Friend added:', data);
+                showNotification(`You are now friends with ${data.friend}!`, 'success');
+                socket.emit('get_friends', { username: currentUser });
+            });
+
+            socket.on('friend_removed', (data) => {
+                console.log('🗑️ Friend removed:', data);
+                showNotification(`Removed ${data.friend} from friends`, 'info');
+                socket.emit('get_friends', { username: currentUser });
+            });
+
             // Premium
             socket.on('premium_activated', (data) => {
                 console.log('✅ Premium activated');
                 isPremium = true;
                 updateUserPremiumStatus(true);
-                showNotification('Premium activated!', 'success');
+                showNotification('Premium activated for 30 days!', 'success');
                 hideUpgradeModal();
             });
 
@@ -810,6 +1293,181 @@ HTML_TEMPLATE = '''
                 console.log('❌ Premium error');
                 showNotification(data.message || 'Premium activation failed', 'error');
             });
+
+            // Call events
+            socket.on('call_started', (data) => {
+                console.log('📞 Call started:', data);
+                showNotification(`${data.from} is calling you!`, 'info');
+                inCall = true;
+                updateCallButton();
+            });
+
+            socket.on('call_ended', (data) => {
+                console.log('📞 Call ended:', data);
+                inCall = false;
+                updateCallButton();
+                showNotification('Call ended', 'info');
+            });
+
+            socket.on('call_error', (data) => {
+                console.log('❌ Call error:', data);
+                showNotification(data.message || 'Call failed', 'error');
+            });
+
+            // Security events
+            socket.on('password_changed', (data) => {
+                console.log('✅ Password changed');
+                showNotification('Password changed successfully!', 'success');
+                document.getElementById('current-password').value = '';
+                document.getElementById('new-password').value = '';
+                document.getElementById('confirm-new-password').value = '';
+            });
+
+            socket.on('password_error', (data) => {
+                console.log('❌ Password change error');
+                showNotification(data.message || 'Password change failed', 'error');
+            });
+
+            socket.on('logged_out_all', (data) => {
+                console.log('✅ Logged out all devices');
+                showNotification('Logged out from all devices', 'info');
+                clearSession();
+                location.reload();
+            });
+        }
+
+        // ========== SESSION MANAGEMENT ==========
+        function saveSession(email, token, username) {
+            const sessionData = {
+                email: email,
+                token: token,
+                username: username,
+                timestamp: Date.now()
+            };
+            localStorage.setItem('echoRoomSession', JSON.stringify(sessionData));
+            console.log('💾 Session saved');
+        }
+
+        function getSession() {
+            const sessionData = localStorage.getItem('echoRoomSession');
+            if (!sessionData) return null;
+            
+            try {
+                return JSON.parse(sessionData);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function clearSession() {
+            localStorage.removeItem('echoRoomSession');
+            console.log('🗑️ Session cleared');
+        }
+
+        function tryAutoLogin() {
+            const session = getSession();
+            if (session && session.email && session.token) {
+                console.log('🔑 Attempting auto-login...');
+                socket.emit('auto_login', {
+                    email: session.email,
+                    token: session.token
+                });
+            } else {
+                console.log('❌ No saved session found');
+                document.getElementById('auth-modal').style.display = 'flex';
+            }
+        }
+
+        // ========== VALIDATION FUNCTIONS ==========
+        function validateEmail(input, hintId) {
+            const email = input.value.trim();
+            const hint = document.getElementById(hintId);
+            // Fixed escape sequence - using raw string
+            const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+            
+            if (!email) {
+                hint.className = 'email-hint';
+                hint.innerHTML = '<i class="fas fa-info-circle"></i> Must be a valid Gmail address';
+                return false;
+            }
+            
+            if (emailRegex.test(email)) {
+                hint.className = 'email-hint valid';
+                hint.innerHTML = '<i class="fas fa-check-circle"></i> Valid Gmail address';
+                return true;
+            } else {
+                hint.className = 'email-hint invalid';
+                hint.innerHTML = '<i class="fas fa-exclamation-circle"></i> Must be a @gmail.com address';
+                return false;
+            }
+        }
+
+        function validateUsername(input) {
+            const username = input.value.trim();
+            const hint = document.getElementById('username-hint');
+            const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
+            
+            if (!username) {
+                hint.className = 'email-hint';
+                hint.innerHTML = '<i class="fas fa-info-circle"></i> 3-20 characters, letters and numbers only';
+                return false;
+            }
+            
+            if (usernameRegex.test(username)) {
+                hint.className = 'email-hint valid';
+                hint.innerHTML = '<i class="fas fa-check-circle"></i> Valid username';
+                return true;
+            } else {
+                hint.className = 'email-hint invalid';
+                hint.innerHTML = '<i class="fas fa-exclamation-circle"></i> 3-20 characters, letters/numbers/underscore only';
+                return false;
+            }
+        }
+
+        function validatePassword(input) {
+            const password = input.value;
+            const hint = document.getElementById('password-hint');
+            
+            if (!password) {
+                hint.className = 'email-hint';
+                hint.innerHTML = '<i class="fas fa-info-circle"></i> Minimum 8 characters';
+                return false;
+            }
+            
+            if (password.length >= 8) {
+                hint.className = 'email-hint valid';
+                hint.innerHTML = '<i class="fas fa-check-circle"></i> Strong password';
+                return true;
+            } else {
+                hint.className = 'email-hint invalid';
+                hint.innerHTML = '<i class="fas fa-exclamation-circle"></i> Password must be at least 8 characters';
+                return false;
+            }
+        }
+
+        function validatePasswordConfirm(input) {
+            const password = document.getElementById('signup-password').value;
+            const confirmPassword = input.value;
+            const passwordHint = document.getElementById('password-hint');
+            
+            if (!confirmPassword) return false;
+            
+            if (password === confirmPassword) {
+                passwordHint.className = 'email-hint valid';
+                passwordHint.innerHTML = '<i class="fas fa-check-circle"></i> Passwords match';
+                return true;
+            } else {
+                passwordHint.className = 'email-hint invalid';
+                passwordHint.innerHTML = '<i class="fas fa-exclamation-circle"></i> Passwords do not match';
+                return false;
+            }
+        }
+
+        function useTestAccount() {
+            document.getElementById('login-email').value = 'test@gmail.com';
+            document.getElementById('login-password').value = '12345678';
+            document.getElementById('remember-me').checked = true;
+            validateEmail(document.getElementById('login-email'), 'login-email-hint');
         }
 
         // ========== AUTHENTICATION FUNCTIONS ==========
@@ -839,63 +1497,91 @@ HTML_TEMPLATE = '''
         function login() {
             const email = document.getElementById('login-email').value.trim();
             const password = document.getElementById('login-password').value.trim();
+            const rememberMe = document.getElementById('remember-me').checked;
             
             if (!email || !password) {
                 showNotification('Please fill all fields', 'error');
                 return;
             }
             
+            if (!validateEmail(document.getElementById('login-email'), 'login-email-hint')) {
+                showNotification('Please enter a valid Gmail address', 'error');
+                return;
+            }
+            
             console.log('🔑 Attempting login with:', email);
-            socket.emit('login', { email, password });
+            socket.emit('login', { 
+                email: email, 
+                password: password,
+                remember_me: rememberMe
+            });
         }
 
         function signup() {
             const username = document.getElementById('signup-username').value.trim();
             const email = document.getElementById('signup-email').value.trim();
-            const password = document.getElementById('signup-password').value.trim();
+            const password = document.getElementById('signup-password').value;
+            const confirmPassword = document.getElementById('signup-password-confirm').value;
+            const rememberMe = document.getElementById('remember-signup').checked;
             
-            if (!username || !email || !password) {
+            if (!username || !email || !password || !confirmPassword) {
                 showNotification('Please fill all fields', 'error');
                 return;
             }
             
-            if (username.length < 3) {
-                showNotification('Username must be at least 3 characters', 'error');
+            if (!validateUsername(document.getElementById('signup-username'))) {
+                showNotification('Invalid username format', 'error');
                 return;
             }
             
-            if (password.length < 6) {
-                showNotification('Password must be at least 6 characters', 'error');
+            if (!validateEmail(document.getElementById('signup-email'), 'signup-email-hint')) {
+                showNotification('Please enter a valid Gmail address', 'error');
+                return;
+            }
+            
+            if (!validatePassword(document.getElementById('signup-password'))) {
+                showNotification('Password must be at least 8 characters', 'error');
+                return;
+            }
+            
+            if (!validatePasswordConfirm(document.getElementById('signup-password-confirm'))) {
+                showNotification('Passwords do not match', 'error');
                 return;
             }
             
             console.log('📝 Attempting signup:', { username, email });
-            socket.emit('signup', { username, email, password });
+            socket.emit('signup', { 
+                username: username, 
+                email: email, 
+                password: password,
+                remember_me: rememberMe
+            });
         }
 
         function handleLoginSuccess(data) {
             console.log('🎉 Login success handler triggered');
             currentUser = data.username;
+            currentUserEmail = data.email;
             isPremium = data.premium || false;
+            sessionToken = data.session_token || '';
             
             // Update UI
             document.getElementById('auth-modal').style.display = 'none';
             document.getElementById('main-app').style.display = 'flex';
             document.getElementById('username-display').textContent = currentUser;
             
-            updateUserPremiumStatus(isPremium);
+            // Update security tab with email
+            if (document.getElementById('security-email')) {
+                document.getElementById('security-email').value = currentUserEmail;
+            }
             
-            // Save session
-            localStorage.setItem('echoRoomUser', JSON.stringify({
-                username: currentUser,
-                premium: isPremium,
-                timestamp: Date.now()
-            }));
+            updateUserPremiumStatus(isPremium);
             
             // Load data
             socket.emit('get_user_settings', { username: currentUser });
             socket.emit('get_rooms');
-            socket.emit('get_friends');
+            socket.emit('get_friends', { username: currentUser });
+            socket.emit('get_friend_requests', { username: currentUser });
             
             // Join general room
             socket.emit('join_room', {
@@ -907,6 +1593,51 @@ HTML_TEMPLATE = '''
             socket.emit('get_room_messages', { room: 'general' });
             
             showNotification(`Welcome ${currentUser}!`, 'success');
+        }
+
+        // ========== SECURITY FUNCTIONS ==========
+        function changePassword() {
+            const currentPass = document.getElementById('current-password').value;
+            const newPass = document.getElementById('new-password').value;
+            const confirmPass = document.getElementById('confirm-new-password').value;
+            
+            if (!currentPass || !newPass || !confirmPass) {
+                showNotification('Please fill all password fields', 'error');
+                return;
+            }
+            
+            if (newPass.length < 8) {
+                showNotification('New password must be at least 8 characters', 'error');
+                return;
+            }
+            
+            if (newPass !== confirmPass) {
+                showNotification('New passwords do not match', 'error');
+                return;
+            }
+            
+            socket.emit('change_password', {
+                email: currentUserEmail,
+                current_password: currentPass,
+                new_password: newPass,
+                session_token: sessionToken
+            });
+        }
+
+        function logoutAllDevices() {
+            if (confirm('Logout from all devices? This will invalidate all active sessions.')) {
+                socket.emit('logout_all_devices', {
+                    email: currentUserEmail,
+                    session_token: sessionToken
+                });
+            }
+        }
+
+        function logout() {
+            if (confirm('Logout from this device?')) {
+                clearSession();
+                location.reload();
+            }
         }
 
         // ========== SETTINGS FUNCTIONS ==========
@@ -936,10 +1667,15 @@ HTML_TEMPLATE = '''
             const displayNameInput = document.getElementById('display-name');
             const userBioInput = document.getElementById('user-bio');
             const themeSelect = document.getElementById('theme-select');
+            const securityEmail = document.getElementById('security-email');
             
             displayNameInput.value = userSettings.displayName || currentUser || '';
             userBioInput.value = userSettings.bio || '';
             themeSelect.value = userSettings.theme || 'dark';
+            
+            if (securityEmail && currentUserEmail) {
+                securityEmail.value = currentUserEmail;
+            }
             
             // Update avatar preview
             const avatarPreview = document.getElementById('settings-avatar-preview');
@@ -1096,6 +1832,12 @@ HTML_TEMPLATE = '''
             
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${data.username === currentUser ? 'own' : ''}`;
+            messageDiv.setAttribute('data-message-id', data.id);
+            messageDiv.style.position = 'relative';
+            
+            // Check if current user can delete this message
+            const canDelete = data.username === currentUser || 
+                            (currentRoomData && currentRoomData.creator === currentUser);
             
             messageDiv.innerHTML = `
                 <div class="message-avatar">
@@ -1111,11 +1853,28 @@ HTML_TEMPLATE = '''
                         </div>
                         <div class="message-text">${escapeHtml(data.message)}</div>
                     </div>
+                    ${canDelete ? `
+                    <div class="message-actions">
+                        <button class="msg-action-btn" onclick="deleteMessage('${data.id}')" title="Delete Message">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                    ` : ''}
                 </div>
             `;
             
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function deleteMessage(messageId) {
+            if (confirm('Delete this message?')) {
+                socket.emit('delete_message', {
+                    message_id: messageId,
+                    room_id: currentRoom,
+                    username: currentUser
+                });
+            }
         }
 
         function escapeHtml(text) {
@@ -1143,9 +1902,15 @@ HTML_TEMPLATE = '''
             const list = document.getElementById('servers-list');
             const roomDiv = document.createElement('div');
             roomDiv.className = 'nav-item';
+            
+            let icon = 'fa-hashtag';
+            if (room.type === 'voice') icon = 'fa-volume-up';
+            if (room.type === 'private') icon = 'fa-lock';
+            
             roomDiv.innerHTML = `
-                <i class="fas fa-hashtag"></i>
+                <i class="fas ${icon}"></i>
                 <span>${room.name}</span>
+                ${room.type !== 'public' ? `<span class="room-type-badge ${room.type}">${room.type}</span>` : ''}
             `;
             
             roomDiv.onclick = () => {
@@ -1169,19 +1934,123 @@ HTML_TEMPLATE = '''
             
             socket.emit('get_room_messages', { room: roomId });
             
-            addSystemMessage(`Joined ${roomName}`);
+            // Update room header
+            updateRoomHeader();
         }
 
-        function addSystemMessage(text) {
-            const messagesDiv = document.getElementById('chat-messages');
-            const messageDiv = document.createElement('div');
-            messageDiv.style.textAlign = 'center';
-            messageDiv.style.opacity = '0.7';
-            messageDiv.style.fontStyle = 'italic';
-            messageDiv.style.padding = '10px';
-            messageDiv.textContent = text;
-            messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        function updateRoomHeader() {
+            const actions = document.getElementById('room-header-actions');
+            const deleteBtn = document.getElementById('delete-room-btn');
+            const callBtn = document.getElementById('call-btn');
+            
+            if (currentRoom !== 'general') {
+                actions.style.display = 'flex';
+                
+                // Show delete button only for room creator
+                if (currentRoomData && currentRoomData.creator === currentUser) {
+                    deleteBtn.style.display = 'inline-flex';
+                    isRoomCreator = true;
+                } else {
+                    deleteBtn.style.display = 'none';
+                    isRoomCreator = false;
+                }
+                
+                // Show call button only for private rooms
+                if (currentRoomData && currentRoomData.type === 'private') {
+                    callBtn.style.display = 'inline-flex';
+                } else {
+                    callBtn.style.display = 'none';
+                }
+            } else {
+                actions.style.display = 'none';
+            }
+            
+            updateCallButton();
+        }
+
+        function updateCallButton() {
+            const callBtn = document.getElementById('call-btn');
+            if (callBtn) {
+                if (inCall) {
+                    callBtn.innerHTML = '<i class="fas fa-phone-slash"></i> End Call';
+                    callBtn.style.background = 'rgba(255, 46, 99, 0.2)';
+                    callBtn.style.borderColor = 'rgba(255, 46, 99, 0.5)';
+                } else {
+                    callBtn.innerHTML = '<i class="fas fa-phone"></i> Call';
+                    callBtn.style.background = 'rgba(67, 181, 129, 0.1)';
+                    callBtn.style.borderColor = 'rgba(67, 181, 129, 0.3)';
+                }
+            }
+        }
+
+        function toggleCall() {
+            if (inCall) {
+                endCall();
+            } else {
+                startCall();
+            }
+        }
+
+        function startCall() {
+            socket.emit('start_call', {
+                from: currentUser,
+                room_id: currentRoom
+            });
+        }
+
+        function endCall() {
+            socket.emit('end_call', {
+                room_id: currentRoom
+            });
+        }
+
+        function leaveRoom() {
+            if (currentRoom === 'general') {
+                showNotification('Cannot leave general room', 'error');
+                return;
+            }
+            
+            if (confirm('Leave this room?')) {
+                socket.emit('leave_room', {
+                    username: currentUser,
+                    room_id: currentRoom
+                });
+            }
+        }
+
+        function deleteRoom() {
+            if (!isRoomCreator) {
+                showNotification('Only room creator can delete room', 'error');
+                return;
+            }
+            
+            if (confirm('Delete this room? This action cannot be undone.')) {
+                socket.emit('delete_room', {
+                    username: currentUser,
+                    room_id: currentRoom
+                });
+            }
+        }
+
+        function updateRoomMembers(members) {
+            const membersDiv = document.getElementById('room-members');
+            membersDiv.innerHTML = '';
+            
+            if (!members || members.length === 0) {
+                membersDiv.innerHTML = '<div style="padding: 10px; opacity: 0.7; text-align: center;">No members</div>';
+                return;
+            }
+            
+            members.forEach(member => {
+                const memberDiv = document.createElement('div');
+                memberDiv.className = 'nav-item';
+                memberDiv.innerHTML = `
+                    <i class="fas fa-user" style="color: ${member.connected ? '#43b581' : '#888'}"></i>
+                    <span>${member.username}</span>
+                    ${member.username === currentUser ? '<span style="margin-left: auto; font-size: 12px; opacity: 0.7;">You</span>' : ''}
+                `;
+                membersDiv.appendChild(memberDiv);
+            });
         }
 
         // ========== CREATE ROOM FUNCTIONS ==========
@@ -1194,11 +2063,13 @@ HTML_TEMPLATE = '''
             document.getElementById('create-room-modal').style.display = 'none';
             document.getElementById('room-name').value = '';
             document.getElementById('room-description').value = '';
+            document.getElementById('room-type').value = 'public';
         }
 
         function createRoom() {
             const name = document.getElementById('room-name').value.trim();
             const description = document.getElementById('room-description').value.trim();
+            const type = document.getElementById('room-type').value;
             
             if (!name) {
                 showNotification('Room name is required', 'error');
@@ -1208,6 +2079,7 @@ HTML_TEMPLATE = '''
             socket.emit('create_room', {
                 name: name,
                 description: description,
+                type: type,
                 creator: currentUser
             });
         }
@@ -1242,6 +2114,48 @@ HTML_TEMPLATE = '''
             });
         }
 
+        function showFriendRequestsModal() {
+            document.getElementById('friend-requests-modal').style.display = 'flex';
+            updateFriendRequestsList();
+        }
+
+        function hideFriendRequestsModal() {
+            document.getElementById('friend-requests-modal').style.display = 'none';
+        }
+
+        function updateFriendRequestsList() {
+            const list = document.getElementById('friend-requests-list');
+            list.innerHTML = '';
+            
+            if (friendRequests.length === 0) {
+                list.innerHTML = '<div style="padding: 20px; text-align: center; opacity: 0.7;">No friend requests</div>';
+                return;
+            }
+            
+            friendRequests.forEach(request => {
+                const requestDiv = document.createElement('div');
+                requestDiv.style.padding = '15px';
+                requestDiv.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+                requestDiv.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>${request}</strong>
+                            <div style="font-size: 12px; opacity: 0.7;">Wants to be your friend</div>
+                        </div>
+                        <div>
+                            <button class="action-btn" onclick="acceptFriendRequest('${request}')" title="Accept">
+                                <i class="fas fa-check"></i> Accept
+                            </button>
+                            <button class="action-btn delete" onclick="declineFriendRequest('${request}')" title="Decline">
+                                <i class="fas fa-times"></i> Decline
+                            </button>
+                        </div>
+                    </div>
+                `;
+                list.appendChild(requestDiv);
+            });
+        }
+
         function updateFriendsList(friends) {
             const friendsList = document.getElementById('friends-list');
             friendsList.innerHTML = '';
@@ -1257,33 +2171,93 @@ HTML_TEMPLATE = '''
                 friendDiv.innerHTML = `
                     <i class="fas fa-user" style="color: ${friend.connected ? '#43b581' : '#888'}"></i>
                     <span>${friend.username}</span>
+                    <span class="friend-status ${friend.connected ? '' : 'offline'}">
+                        ${friend.connected ? 'Online' : 'Offline'}
+                    </span>
+                    <button class="action-btn delete" onclick="removeFriend('${friend.username}')" title="Remove Friend" style="margin-left: auto; padding: 5px 10px; font-size: 12px;">
+                        <i class="fas fa-user-minus"></i>
+                    </button>
                 `;
                 friendsList.appendChild(friendDiv);
+            });
+        }
+
+        function acceptFriendRequest(friendUsername) {
+            socket.emit('accept_friend_request', {
+                username: currentUser,
+                friend_username: friendUsername
+            });
+        }
+
+        function declineFriendRequest(friendUsername) {
+            socket.emit('decline_friend_request', {
+                username: currentUser,
+                friend_username: friendUsername
+            });
+        }
+
+        function removeFriend(friendUsername) {
+            if (confirm(`Remove ${friendUsername} from friends?`)) {
+                socket.emit('remove_friend', {
+                    username: currentUser,
+                    friend_username: friendUsername
+                });
+            }
+        }
+
+        function updateFriendRequestsBadge() {
+            const badge = document.getElementById('friend-requests-badge');
+            if (friendRequests.length > 0) {
+                badge.textContent = friendRequests.length;
+                badge.style.display = 'block';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        // ========== INVITE FUNCTIONS ==========
+        function showInviteModal() {
+            document.getElementById('invite-modal').style.display = 'flex';
+            socket.emit('get_invite_link', {
+                username: currentUser,
+                room_id: currentRoom
+            });
+        }
+
+        function hideInviteModal() {
+            document.getElementById('invite-modal').style.display = 'none';
+        }
+
+        function copyInviteLink() {
+            const linkText = document.getElementById('invite-link').textContent;
+            navigator.clipboard.writeText(linkText).then(() => {
+                showNotification('Invite link copied!', 'success');
             });
         }
 
         // ========== UPGRADE FUNCTIONS ==========
         function showUpgradeModal() {
             document.getElementById('upgrade-modal').style.display = 'flex';
-            document.getElementById('owner-code').focus();
+            document.getElementById('upgrade-code').focus();
         }
 
         function hideUpgradeModal() {
             document.getElementById('upgrade-modal').style.display = 'none';
-            document.getElementById('owner-code').value = '';
+            document.getElementById('upgrade-code').value = '';
         }
 
-        function upgradeToPremium() {
-            const ownerCode = document.getElementById('owner-code').value.trim();
+        function upgradeAccount() {
+            const upgradeCode = document.getElementById('upgrade-code').value.trim();
             
-            // Simple test code
-            if (ownerCode === 'test') {
-                socket.emit('activate_premium', {
-                    username: currentUser
-                });
-            } else {
-                showNotification('Invalid code. Use "test" for testing', 'error');
+            if (!upgradeCode) {
+                showNotification('Enter upgrade code', 'error');
+                return;
             }
+            
+            socket.emit('activate_premium', {
+                username: currentUser,
+                code: upgradeCode
+            });
         }
 
         // ========== UTILITY FUNCTIONS ==========
@@ -1297,7 +2271,6 @@ HTML_TEMPLATE = '''
             setTimeout(() => notification.remove(), 3000);
         }
 
-        // ========== MUTE/DEAFEN FUNCTIONS ==========
         function toggleMute() {
             const btn = document.getElementById('mute-btn');
             const isMuted = btn.innerHTML.includes('Unmute');
@@ -1338,6 +2311,9 @@ HTML_TEMPLATE = '''
             document.getElementById('signup-password').onkeypress = function(e) {
                 if (e.key === 'Enter') signup();
             };
+            document.getElementById('signup-password-confirm').onkeypress = function(e) {
+                if (e.key === 'Enter') signup();
+            };
             
             document.getElementById('message-input').onkeypress = function(e) {
                 if (e.key === 'Enter') sendMessage();
@@ -1351,8 +2327,8 @@ HTML_TEMPLATE = '''
                 if (e.key === 'Enter') sendFriendRequest();
             };
             
-            document.getElementById('owner-code').onkeypress = function(e) {
-                if (e.key === 'Enter') upgradeToPremium();
+            document.getElementById('upgrade-code').onkeypress = function(e) {
+                if (e.key === 'Enter') upgradeAccount();
             };
         };
     </script>
@@ -1374,7 +2350,10 @@ def load_data():
         'users_db': {},
         'rooms_db': {},
         'messages_db': {},
-        'user_settings': {}
+        'user_settings': {},
+        'friends_db': {},
+        'friend_requests_db': {},
+        'sessions_db': {}
     }
 
 def save_data():
@@ -1384,7 +2363,10 @@ def save_data():
                 'users_db': users_db,
                 'rooms_db': rooms_db,
                 'messages_db': messages_db,
-                'user_settings': user_settings_db
+                'user_settings': user_settings_db,
+                'friends_db': friends_db,
+                'friend_requests_db': friend_requests_db,
+                'sessions_db': sessions_db
             }, f, indent=2)
     except Exception as e:
         print(f"Error saving data: {e}")
@@ -1395,8 +2377,13 @@ users_db = data.get('users_db', {})
 rooms_db = data.get('rooms_db', {})
 messages_db = data.get('messages_db', {})
 user_settings_db = data.get('user_settings', {})
+friends_db = data.get('friends_db', {})
+friend_requests_db = data.get('friend_requests_db', {})
+sessions_db = data.get('sessions_db', {})
 
 active_users = {}
+user_rooms = {}
+socket_sessions = {}
 
 # Create default room if not exists
 if "general" not in rooms_db:
@@ -1412,26 +2399,19 @@ if "general" not in rooms_db:
     save_data()
 
 # Create test user if not exists
-if "test@test.com" not in users_db:
-    users_db["test@test.com"] = {
+if "test@gmail.com" not in users_db:
+    hashed_password, salt = hash_password("12345678")
+    users_db["test@gmail.com"] = {
         'username': 'testuser',
-        'password_hash': hashlib.sha256("123456".encode()).hexdigest(),
+        'password_hash': hashed_password,
+        'salt': salt,
         'premium': True,
-        'friends': [],
-        'friend_requests': []
+        'created_at': datetime.now().isoformat(),
+        'verified': True
     }
+    friends_db['testuser'] = []
+    friend_requests_db['testuser'] = []
     save_data()
-
-# ==================== FLASK ROUTES ====================
-
-@app.route('/')
-def index():
-    """Main route - serves the HTML page"""
-    return render_template_string(HTML_TEMPLATE)
-
-@app.route('/favicon.ico')
-def favicon():
-    return '', 404
 
 # ==================== HELPER FUNCTIONS ====================
 
@@ -1441,6 +2421,85 @@ def find_user_email(username):
             return email
     return None
 
+def get_room_members(room_id):
+    room = rooms_db.get(room_id)
+    if not room:
+        return []
+    
+    members = []
+    for username in room.get('members', []):
+        is_connected = username in active_users
+        members.append({
+            'username': username,
+            'connected': is_connected
+        })
+    
+    return members
+
+def are_friends(user1, user2):
+    return (user2 in friends_db.get(user1, [])) and (user1 in friends_db.get(user2, []))
+
+def create_session(email):
+    """Create a new session for user"""
+    token = generate_session_token()
+    expiry = datetime.now() + timedelta(days=SESSION_EXPIRY_DAYS)
+    
+    if email not in sessions_db:
+        sessions_db[email] = []
+    
+    sessions_db[email].append({
+        'token': token,
+        'created_at': datetime.now().isoformat(),
+        'expires_at': expiry.isoformat(),
+        'ip': request.remote_addr if request else 'unknown'
+    })
+    
+    # Keep only last 5 sessions per user
+    if len(sessions_db[email]) > 5:
+        sessions_db[email] = sessions_db[email][-5:]
+    
+    save_data()
+    return token
+
+def validate_session(email, token):
+    """Validate user session token"""
+    if email not in sessions_db:
+        return False
+    
+    now = datetime.now()
+    valid_sessions = []
+    is_valid = False
+    
+    for session in sessions_db[email]:
+        expiry = datetime.fromisoformat(session['expires_at'])
+        if expiry > now and session['token'] == token:
+            is_valid = True
+            valid_sessions.append(session)
+    
+    # Remove expired sessions
+    sessions_db[email] = valid_sessions
+    save_data()
+    
+    return is_valid
+
+def invalidate_all_sessions(email):
+    """Invalidate all sessions for a user"""
+    if email in sessions_db:
+        sessions_db[email] = []
+        save_data()
+        return True
+    return False
+
+# ==================== FLASK ROUTES ====================
+
+@app.route('/')
+def index():
+    return render_template_string(HTML_TEMPLATE)
+
+@app.route('/favicon.ico')
+def favicon():
+    return '', 404
+
 # ==================== SOCKETIO EVENTS ====================
 
 @socketio.on('connect')
@@ -1449,98 +2508,372 @@ def handle_connect():
 
 @socketio.on('disconnect')
 def handle_disconnect():
+    # Remove from active users
     for username, sid in list(active_users.items()):
         if sid == request.sid:
             del active_users[username]
+            if username in user_rooms:
+                del user_rooms[username]
             print(f"❌ User disconnected: {username}")
+            
+            # Notify rooms user was in
+            for room_id, room in rooms_db.items():
+                if username in room.get('members', []):
+                    socketio.emit('room_members_updated', 
+                                get_room_members(room_id),
+                                room=room_id)
             break
-
-@socketio.on('restore_session')
-def handle_restore_session(data):
-    username = data.get('username')
     
-    user_email = find_user_email(username)
-    if not user_email:
-        emit('session_error', {'message': 'Session expired'})
+    # Remove socket session
+    if request.sid in socket_sessions:
+        del socket_sessions[request.sid]
+
+@socketio.on('auto_login')
+def handle_auto_login(data):
+    email = data['email']
+    token = data['token']
+    
+    if not email or not token:
+        emit('auto_login_error', {'message': 'Invalid session'})
         return
     
-    user_data = users_db[user_email]
+    if not validate_session(email, token):
+        emit('auto_login_error', {'message': 'Session expired'})
+        return
+    
+    if email not in users_db:
+        emit('auto_login_error', {'message': 'User not found'})
+        return
+    
+    user_data = users_db[email]
+    username = user_data['username']
+    
+    # Store session
+    socket_sessions[request.sid] = {
+        'email': email,
+        'token': token,
+        'username': username
+    }
+    
     active_users[username] = request.sid
     
-    emit('session_restored', {
+    emit('auto_login_success', {
         'username': username,
-        'premium': user_data.get('premium', False)
+        'email': email,
+        'premium': user_data.get('premium', False),
+        'session_token': token
     })
 
 @socketio.on('signup')
 def handle_signup(data):
     username = data['username']
-    email = data['email']
+    email = data['email'].lower()
     password = data['password']
+    remember_me = data.get('remember_me', True)
     
+    # Validation
     if not username or not email or not password:
         emit('signup_error', {'message': 'All fields required'})
+        return
+    
+    if not is_valid_gmail(email):
+        emit('signup_error', {'message': 'Please use a valid Gmail address (@gmail.com)'})
         return
     
     if email in users_db:
         emit('signup_error', {'message': 'Email already registered'})
         return
     
-    # Check if username exists
+    # Check username
     for user_data in users_db.values():
         if user_data['username'] == username:
             emit('signup_error', {'message': 'Username already taken'})
             return
     
+    # Hash password
+    hashed_password, salt = hash_password(password)
+    
+    # Create user
     users_db[email] = {
         'username': username,
-        'password_hash': hashlib.sha256(password.encode()).hexdigest(),
+        'password_hash': hashed_password,
+        'salt': salt,
         'premium': False,
-        'friends': [],
-        'friend_requests': []
+        'created_at': datetime.now().isoformat(),
+        'verified': False
     }
     
+    friends_db[username] = []
+    friend_requests_db[username] = []
+    
+    # Create session if remember me is enabled
+    session_token = None
+    if remember_me:
+        session_token = create_session(email)
+    
     save_data()
-    emit('signup_success', {'message': 'Account created successfully'})
+    
+    # Send welcome email
+    send_welcome_email(email, username)
+    
+    emit('signup_success', {
+        'message': 'Account created successfully',
+        'email': email,
+        'session_token': session_token
+    })
 
 @socketio.on('login')
 def handle_login(data):
-    email = data['email']
+    email = data['email'].lower()
     password = data['password']
+    remember_me = data.get('remember_me', True)
     
     if email not in users_db:
-        emit('login_error', {'message': 'User not found'})
+        emit('login_error', {'message': 'Invalid email or password'})
         return
     
     user_data = users_db[email]
     
-    if user_data['password_hash'] != hashlib.sha256(password.encode()).hexdigest():
-        emit('login_error', {'message': 'Wrong password'})
+    # Verify password
+    if not verify_password(password, user_data['password_hash'], user_data['salt']):
+        emit('login_error', {'message': 'Invalid email or password'})
         return
     
     username = user_data['username']
+    
+    # Create session
+    session_token = None
+    if remember_me:
+        session_token = create_session(email)
+    
+    # Store session
+    socket_sessions[request.sid] = {
+        'email': email,
+        'token': session_token,
+        'username': username
+    }
+    
     active_users[username] = request.sid
     
     emit('login_success', {
         'username': username,
-        'premium': user_data.get('premium', False)
+        'email': email,
+        'premium': user_data.get('premium', False),
+        'session_token': session_token
     })
+
+@socketio.on('change_password')
+def handle_change_password(data):
+    email = data['email']
+    current_password = data['current_password']
+    new_password = data['new_password']
+    token = data.get('session_token')
+    
+    if not validate_session(email, token):
+        emit('session_expired', {'message': 'Session expired'})
+        return
+    
+    if email not in users_db:
+        emit('password_error', {'message': 'User not found'})
+        return
+    
+    user_data = users_db[email]
+    
+    # Verify current password
+    if not verify_password(current_password, user_data['password_hash'], user_data['salt']):
+        emit('password_error', {'message': 'Current password is incorrect'})
+        return
+    
+    # Hash new password
+    hashed_password, salt = hash_password(new_password)
+    
+    # Update password
+    users_db[email]['password_hash'] = hashed_password
+    users_db[email]['salt'] = salt
+    
+    save_data()
+    
+    emit('password_changed', {'success': True})
+
+@socketio.on('logout_all_devices')
+def handle_logout_all(data):
+    email = data['email']
+    token = data.get('session_token')
+    
+    if not validate_session(email, token):
+        emit('session_expired', {'message': 'Session expired'})
+        return
+    
+    # Invalidate all sessions
+    invalidate_all_sessions(email)
+    
+    # Disconnect user if online
+    username = users_db[email]['username']
+    if username in active_users:
+        sid = active_users[username]
+        socketio.emit('logged_out_all', {}, room=sid)
+        del active_users[username]
+    
+    emit('logged_out_all', {'success': True})
+
+# ========== SECURITY MIDDLEWARE ==========
+def check_auth(sid):
+    """Check if socket has valid authentication"""
+    if sid not in socket_sessions:
+        return None
+    
+    session = socket_sessions[sid]
+    email = session['email']
+    token = session['token']
+    
+    if not validate_session(email, token):
+        return None
+    
+    return session
+
+# ========== PROTECTED SOCKET EVENTS ==========
 
 @socketio.on('join_room')
 def handle_join_room(data):
-    username = data['username']
-    room = data['room']
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    username = session['username']
+    room_id = data['room']
     
     if username in active_users:
-        join_room(room)
-        print(f"✅ {username} joined room: {room}")
+        room = rooms_db.get(room_id)
+        if room and room.get('type') == 'private':
+            if room.get('creator') != username and username not in room.get('invited', []):
+                creator = room.get('creator')
+                if not are_friends(username, creator):
+                    emit('room_join_error', {'message': 'Private room. You need to be friends with the creator.'})
+                    return
+        
+        join_room(room_id)
+        user_rooms[username] = room_id
+        
+        if room_id in rooms_db:
+            room = rooms_db[room_id]
+            if username not in room.get('members', []):
+                room['members'] = room.get('members', []) + [username]
+                save_data()
+        
+        print(f"✅ {username} joined room: {room_id}")
+        
+        emit('room_joined', {
+            'room': rooms_db.get(room_id, {}),
+            'members': get_room_members(room_id)
+        })
+        
+        socketio.emit('room_members_updated', 
+                     get_room_members(room_id),
+                     room=room_id)
+
+@socketio.on('leave_room')
+def handle_leave_room(data):
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    username = session['username']
+    room_id = data['room_id']
+    
+    if room_id == 'general':
+        emit('room_left', {'message': 'Cannot leave general room'})
+        return
+    
+    if room_id in rooms_db:
+        room = rooms_db[room_id]
+        if username in room.get('members', []):
+            room['members'] = [m for m in room['members'] if m != username]
+            save_data()
+    
+    leave_room(room_id)
+    
+    if username in user_rooms and user_rooms[username] == room_id:
+        del user_rooms[username]
+    
+    socketio.emit('room_members_updated', 
+                 get_room_members(room_id),
+                 room=room_id)
+    
+    emit('room_left', {
+        'room_id': room_id,
+        'message': f'Left room {rooms_db.get(room_id, {}).get("name", "")}'
+    })
+
+@socketio.on('delete_room')
+def handle_delete_room(data):
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    username = session['username']
+    room_id = data['room_id']
+    
+    if room_id == 'general':
+        emit('room_deleted', {'message': 'Cannot delete general room'})
+        return
+    
+    if room_id in rooms_db:
+        room = rooms_db[room_id]
+        if room.get('creator') != username:
+            emit('room_deleted', {'message': 'Only room creator can delete room'})
+            return
+        
+        socketio.emit('room_deleted', {
+            'room_id': room_id,
+            'message': 'Room has been deleted by the creator'
+        }, room=room_id)
+        
+        del rooms_db[room_id]
+        
+        if room_id in messages_db:
+            del messages_db[room_id]
+        
+        save_data()
+        
+        socketio.emit('room_list', list(rooms_db.values()), broadcast=True)
+        
+        emit('room_deleted', {
+            'room_id': room_id,
+            'message': 'Room deleted successfully'
+        })
+
+@socketio.on('get_invite_link')
+def handle_get_invite_link(data):
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    username = session['username']
+    room_id = data['room_id']
+    
+    if room_id in rooms_db:
+        room = rooms_db[room_id]
+        if room.get('type') == 'private' and room.get('creator') != username:
+            emit('invite_link_error', {'message': 'Only room creator can generate invite links'})
+            return
+        
+        invite_link = f"http://localhost:5000/join/{room_id}"
+        emit('invite_link', {'link': invite_link})
 
 @socketio.on('message')
 def handle_message(data):
-    message_id = str(uuid.uuid4())[:8]
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
     
-    # Get user settings
-    username = data['username']
+    username = session['username']
+    
+    message_id = str(uuid.uuid4())[:8]
     user_settings = user_settings_db.get(username, {})
     
     message = {
@@ -1563,40 +2896,83 @@ def handle_message(data):
     save_data()
     emit('message', message, room=data['server'])
 
+@socketio.on('delete_message')
+def handle_delete_message(data):
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    username = session['username']
+    message_id = data['message_id']
+    room_id = data['room_id']
+    
+    if room_id in messages_db:
+        for i, msg in enumerate(messages_db[room_id]):
+            if msg.get('id') == message_id:
+                room = rooms_db.get(room_id, {})
+                can_delete = msg.get('username') == username or room.get('creator') == username
+                
+                if can_delete:
+                    del messages_db[room_id][i]
+                    save_data()
+                    emit('message_deleted', {'message_id': message_id}, room=room_id)
+                    break
+
 @socketio.on('get_room_messages')
 def handle_get_room_messages(data):
+    session = check_auth(request.sid)
+    if not session:
+        return
+    
     room_id = data['room']
     room_messages = messages_db.get(room_id, [])
     emit('chat_messages', room_messages[-100:])
 
 @socketio.on('get_rooms')
 def handle_get_rooms():
+    session = check_auth(request.sid)
+    if not session:
+        return
+    
     emit('room_list', list(rooms_db.values()))
 
 @socketio.on('create_room')
 def handle_create_room(data):
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    username = session['username']
     room_id = str(uuid.uuid4())[:8]
     room = {
         'id': room_id,
         'name': data['name'],
         'description': data.get('description', ''),
-        'creator': data['creator'],
+        'type': data.get('type', 'public'),
+        'creator': username,
         'created_at': datetime.now().isoformat(),
-        'members': [data['creator']]
+        'members': [username],
+        'invited': []
     }
     
     rooms_db[room_id] = room
     save_data()
     
-    if data['creator'] in active_users:
+    if username in active_users:
         join_room(room_id)
     
     emit('room_created', {'room': room})
-    emit('room_list', list(rooms_db.values()), broadcast=True)
+    socketio.emit('room_list', list(rooms_db.values()), broadcast=True)
 
 @socketio.on('get_user_settings')
 def handle_get_user_settings(data):
-    username = data['username']
+    session = check_auth(request.sid)
+    if not session:
+        return
+    
+    username = session['username']
     
     if username not in user_settings_db:
         user_settings_db[username] = {
@@ -1612,7 +2988,12 @@ def handle_get_user_settings(data):
 
 @socketio.on('update_user_settings')
 def handle_update_user_settings(data):
-    username = data['username']
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    username = session['username']
     settings = data['settings']
     
     if username not in user_settings_db:
@@ -1625,82 +3006,275 @@ def handle_update_user_settings(data):
 
 @socketio.on('activate_premium')
 def handle_activate_premium(data):
-    username = data['username']
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    username = session['username']
     
     user_email = find_user_email(username)
     if not user_email:
         emit('premium_error', {'message': 'User not found'})
         return
     
+    if data.get('code') != 'test':
+        emit('premium_error', {'message': 'Invalid upgrade code'})
+        return
+    
     users_db[user_email]['premium'] = True
+    users_db[user_email]['premium_until'] = (datetime.now() + timedelta(days=30)).isoformat()
     save_data()
     
     emit('premium_activated', {'username': username})
 
 @socketio.on('send_friend_request')
 def handle_send_friend_request(data):
-    from_user = data['from']
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    from_user = session['username']
     to_user = data['to']
     
-    recipient_email = find_user_email(to_user)
-    if not recipient_email:
+    if from_user == to_user:
+        emit('friend_request_error', {'message': 'Cannot add yourself'})
+        return
+    
+    user_exists = False
+    for user_data in users_db.values():
+        if user_data['username'] == to_user:
+            user_exists = True
+            break
+    
+    if not user_exists:
         emit('friend_request_error', {'message': 'User not found'})
         return
     
-    # Add to recipient's friend requests
-    if 'friend_requests' not in users_db[recipient_email]:
-        users_db[recipient_email]['friend_requests'] = []
+    if are_friends(from_user, to_user):
+        emit('friend_request_error', {'message': 'Already friends'})
+        return
     
-    if from_user not in users_db[recipient_email]['friend_requests']:
-        users_db[recipient_email]['friend_requests'].append(from_user)
+    if to_user in friend_requests_db.get(from_user, []):
+        emit('friend_request_error', {'message': 'Friend request already sent'})
+        return
     
-    save_data()
+    if to_user not in friend_requests_db:
+        friend_requests_db[to_user] = []
+    
+    if from_user not in friend_requests_db[to_user]:
+        friend_requests_db[to_user].append(from_user)
+        save_data()
+    
+    if to_user in active_users:
+        socketio.emit('friend_request_received', {
+            'from': from_user
+        }, room=active_users[to_user])
+    
     emit('friend_request_sent', {'success': True})
 
-@socketio.on('get_friends')
-def handle_get_friends():
-    username = None
-    for uname, sid in active_users.items():
-        if sid == request.sid:
-            username = uname
-            break
-    
-    if not username:
-        emit('friends_list', [])
+@socketio.on('get_friend_requests')
+def handle_get_friend_requests(data):
+    session = check_auth(request.sid)
+    if not session:
         return
     
-    user_email = find_user_email(username)
+    username = session['username']
     
-    if not user_email or 'friends' not in users_db[user_email]:
-        emit('friends_list', [])
+    requests = friend_requests_db.get(username, [])
+    emit('friend_requests', {'requests': requests})
+
+@socketio.on('accept_friend_request')
+def handle_accept_friend_request(data):
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
         return
     
-    friends_data = []
-    for friend_username in users_db[user_email]['friends']:
-        is_connected = friend_username in active_users
+    username = session['username']
+    friend_username = data['friend_username']
+    
+    if friend_username not in friend_requests_db.get(username, []):
+        return
+    
+    friend_requests_db[username] = [r for r in friend_requests_db.get(username, []) if r != friend_username]
+    
+    if username not in friends_db:
+        friends_db[username] = []
+    if friend_username not in friends_db[username]:
+        friends_db[username].append(friend_username)
+    
+    if friend_username not in friends_db:
+        friends_db[friend_username] = []
+    if username not in friends_db[friend_username]:
+        friends_db[friend_username].append(username)
+    
+    save_data()
+    
+    if username in active_users:
+        emit('friend_request_accepted', {
+            'friend': friend_username
+        }, room=active_users[username])
         
-        friends_data.append({
-            'username': friend_username,
+        friends_list = []
+        for friend in friends_db.get(username, []):
+            is_connected = friend in active_users
+            friends_list.append({
+                'username': friend,
+                'connected': is_connected
+            })
+        emit('friends_list', friends_list, room=active_users[username])
+    
+    if friend_username in active_users:
+        emit('friend_added', {
+            'friend': username
+        }, room=active_users[friend_username])
+        
+        friends_list = []
+        for friend in friends_db.get(friend_username, []):
+            is_connected = friend in active_users
+            friends_list.append({
+                'username': friend,
+                'connected': is_connected
+            })
+        emit('friends_list', friends_list, room=active_users[friend_username])
+
+@socketio.on('decline_friend_request')
+def handle_decline_friend_request(data):
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    username = session['username']
+    friend_username = data['friend_username']
+    
+    if username in friend_requests_db:
+        friend_requests_db[username] = [r for r in friend_requests_db[username] if r != friend_username]
+        save_data()
+    
+    if username in active_users:
+        emit('friend_request_declined', {
+            'friend': friend_username
+        }, room=active_users[username])
+
+@socketio.on('remove_friend')
+def handle_remove_friend(data):
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    username = session['username']
+    friend_username = data['friend_username']
+    
+    if username in friends_db:
+        friends_db[username] = [f for f in friends_db[username] if f != friend_username]
+    
+    if friend_username in friends_db:
+        friends_db[friend_username] = [f for f in friends_db[friend_username] if f != username]
+    
+    save_data()
+    
+    if username in active_users:
+        emit('friend_removed', {
+            'friend': friend_username
+        }, room=active_users[username])
+        
+        friends_list = []
+        for friend in friends_db.get(username, []):
+            is_connected = friend in active_users
+            friends_list.append({
+                'username': friend,
+                'connected': is_connected
+            })
+        emit('friends_list', friends_list, room=active_users[username])
+    
+    if friend_username in active_users:
+        emit('friend_removed', {
+            'friend': username
+        }, room=active_users[friend_username])
+        
+        friends_list = []
+        for friend in friends_db.get(friend_username, []):
+            is_connected = friend in active_users
+            friends_list.append({
+                'username': friend,
+                'connected': is_connected
+            })
+        emit('friends_list', friends_list, room=active_users[friend_username])
+
+@socketio.on('get_friends')
+def handle_get_friends(data):
+    session = check_auth(request.sid)
+    if not session:
+        return
+    
+    username = session['username']
+    
+    friends_list = []
+    for friend in friends_db.get(username, []):
+        is_connected = friend in active_users
+        friends_list.append({
+            'username': friend,
             'connected': is_connected
         })
     
-    emit('friends_list', friends_data)
+    emit('friends_list', friends_list)
+
+@socketio.on('start_call')
+def handle_start_call(data):
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    username = session['username']
+    room_id = data['room_id']
+    
+    room = rooms_db.get(room_id, {})
+    if room.get('type') != 'private':
+        emit('call_error', {'message': 'Calls only allowed in private rooms'})
+        return
+    
+    emit('call_started', {
+        'from': username,
+        'room_id': room_id
+    }, room=room_id, include_self=False)
+
+@socketio.on('end_call')
+def handle_end_call(data):
+    session = check_auth(request.sid)
+    if not session:
+        return
+    
+    room_id = data['room_id']
+    
+    emit('call_ended', {
+        'room_id': room_id
+    }, room=room_id)
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("🎤 ECHOROOM - Voice & Text Chat")
+    print("🎤 ECHOROOM - SECURE VERSION")
     print("=" * 60)
-    print("\n✅ ALL BUTTONS ARE WORKING!")
-    print("\n🎯 Features:")
-    print("• Login/Signup (Test: test@test.com / 123456)")
-    print("• Create and join rooms")
-    print("• Send messages")
-    print("• Upload avatars")
-    print("• Settings with save functionality")
-    print("• Friend system")
-    print("• Premium upgrade (use code: 'test')")
-    print("\n💾 Data saved to:", DATA_FILE)
-    print("\n🚀 Access at: http://localhost:5000")
+    print("\n✅ SECURITY FEATURES:")
+    print("- Real Gmail validation (@gmail.com required)")
+    print("- Secure password hashing with salt")
+    print("- Session tokens with expiry (30 days)")
+    print("- Auto-login with 'Remember me'")
+    print("- Change password feature")
+    print("- Logout all devices")
+    print("\n🔧 SETUP REQUIRED:")
+    print("1. Set EMAIL_SENDER and EMAIL_PASSWORD for Gmail")
+    print("2. Enable Gmail App Password")
+    print("3. Run: python app.py")
+    print("\n👤 TEST ACCOUNT:")
+    print("- Email: test@gmail.com")
+    print("- Password: 12345678")
+    print("- Premium Code: 'test'")
+    print("\n🚀 Access: http://localhost:5000")
     print("=" * 60)
     
     socketio.run(app, 
