@@ -1,15 +1,14 @@
+
 #!/usr/bin/env python3
 """
 Squad Talk - Discord-like Voice & Text Chat Application
-Fixed version with persistent messages, real-time updates, and WebRTC voice
+With Gmail authentication, friend requests, emojis, and owner premium code
 """
 
 import uuid
 import re
 import hashlib
 import smtplib
-import json
-import os
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from dataclasses import dataclass, asdict
@@ -20,6 +19,7 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 # ==================== CONFIGURATION ====================
 OWNER_CODE = "i'm the owner"
 PREMIUM_USERS = {}  # username: expiry_date
+FRIEND_REQUESTS = {}  # receiver: [sender1, sender2]
 
 # Email configuration (for Gmail authentication)
 EMAIL_CONFIG = {
@@ -28,9 +28,6 @@ EMAIL_CONFIG = {
     'sender_email': 'your-app-email@gmail.com',  # Change this
     'sender_password': 'your-app-password'  # Change this
 }
-
-# Data persistence
-DATA_FILE = 'squad_talk_data.json'
 
 # ==================== HTML TEMPLATE ====================
 HTML_TEMPLATE = """
@@ -682,7 +679,7 @@ HTML_TEMPLATE = """
                     <strong id="username-display">Guest</strong>
                     <div id="user-status" style="font-size: 12px; opacity: 0.7;">Free User</div>
                 </div>
-                <button class="btn" onclick="showUpgradeModal()" style="padding: 8px 16px; font-size: 12px;" id="upgrade-btn">
+                <button class="btn" onclick="showUpgradeModal()" style="padding: 8px 16px; font-size: 12px;">
                     <i class="fas fa-crown"></i> Upgrade
                 </button>
             </div>
@@ -789,80 +786,70 @@ HTML_TEMPLATE = """
                 <button class="close-btn" onclick="hideUpgradeModal()">&times;</button>
             </div>
             
-            <div id="already-premium-section" style="display: none;">
-                <div style="text-align: center; padding: 30px; background: rgba(67,181,129,0.1); border-radius: 15px; border: 1px solid #43b581;">
-                    <i class="fas fa-crown" style="font-size: 48px; color: #ffd700; margin-bottom: 20px;"></i>
-                    <h3 style="color: #43b581;">You're already Premium! 🎉</h3>
-                    <p>Enjoy all premium features. Thank you for being part of Squad Talk!</p>
+            <div class="premium-features">
+                <h3><i class="fas fa-star"></i> Premium Features</h3>
+                <ul class="feature-list">
+                    <li><i class="fas fa-check-circle"></i> Create unlimited servers</li>
+                    <li><i class="fas fa-check-circle"></i> HD Voice & Video calls</li>
+                    <li><i class="fas fa-check-circle"></i> Screen sharing & recording</li>
+                    <li><i class="fas fa-check-circle"></i> Custom emojis & stickers</li>
+                    <li><i class="fas fa-check-circle"></i> 500GB cloud storage</li>
+                    <li><i class="fas fa-check-circle"></i> Priority 24/7 support</li>
+                    <li><i class="fas fa-check-circle"></i> Video calls (100+ people)</li>
+                    <li><i class="fas fa-check-circle"></i> Advanced server analytics</li>
+                </ul>
+            </div>
+
+            <div style="margin-top: 30px;">
+                <h3>Special Owner Code</h3>
+                <div class="form-group">
+                    <input type="text" id="owner-code" placeholder="Enter owner code (optional)">
+                </div>
+                <button class="btn btn-premium" onclick="checkOwnerCode()">
+                    <i class="fas fa-key"></i> Validate Owner Code
+                </button>
+            </div>
+
+            <div style="margin-top: 30px;">
+                <h3>Choose Plan</h3>
+                <div style="display: flex; gap: 15px; margin-top: 20px;">
+                    <div style="flex: 1; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 10px;">
+                        <h4>Monthly</h4>
+                        <div style="font-size: 28px; font-weight: bold; color: #00adb5; margin: 15px 0;">$9.99</div>
+                        <button class="btn" onclick="selectPlan('monthly')">
+                            Subscribe Monthly
+                        </button>
+                    </div>
+                    <div style="flex: 1; padding: 20px; background: rgba(255,215,0,0.1); border-radius: 10px; border: 1px solid rgba(255,215,0,0.3);">
+                        <h4 style="color: #ffd700;">Yearly</h4>
+                        <div style="font-size: 28px; font-weight: bold; color: #ffd700; margin: 15px 0;">$99.99</div>
+                        <div style="color: #43b581; font-size: 14px; margin-bottom: 15px;">Save 20%</div>
+                        <button class="btn btn-success" onclick="selectPlan('yearly')">
+                            <i class="fas fa-gem"></i> Subscribe Yearly
+                        </button>
+                    </div>
                 </div>
             </div>
-            
-            <div id="upgrade-options-section">
-                <div class="premium-features">
-                    <h3><i class="fas fa-star"></i> Premium Features</h3>
-                    <ul class="feature-list">
-                        <li><i class="fas fa-check-circle"></i> Create unlimited servers</li>
-                        <li><i class="fas fa-check-circle"></i> HD Voice & Video calls</li>
-                        <li><i class="fas fa-check-circle"></i> Screen sharing & recording</li>
-                        <li><i class="fas fa-check-circle"></i> Custom emojis & stickers</li>
-                        <li><i class="fas fa-check-circle"></i> 500GB cloud storage</li>
-                        <li><i class="fas fa-check-circle"></i> Priority 24/7 support</li>
-                        <li><i class="fas fa-check-circle"></i> Video calls (100+ people)</li>
-                        <li><i class="fas fa-check-circle"></i> Advanced server analytics</li>
-                    </ul>
-                </div>
 
-                <div style="margin-top: 30px;">
-                    <h3>Special Owner Code</h3>
-                    <div class="form-group">
-                        <input type="text" id="owner-code" placeholder="Enter owner code (optional)">
-                    </div>
-                    <button class="btn btn-premium" onclick="checkOwnerCode()">
-                        <i class="fas fa-key"></i> Validate Owner Code
-                    </button>
+            <div id="payment-section" style="display: none; margin-top: 30px;">
+                <h3><i class="fas fa-credit-card"></i> Payment Details</h3>
+                <div class="form-group">
+                    <label>Card Number</label>
+                    <input type="text" id="card-number" placeholder="4242 4242 4242 4242">
                 </div>
-
-                <div style="margin-top: 30px;">
-                    <h3>Choose Plan</h3>
-                    <div style="display: flex; gap: 15px; margin-top: 20px;">
-                        <div style="flex: 1; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 10px;">
-                            <h4>Monthly</h4>
-                            <div style="font-size: 28px; font-weight: bold; color: #00adb5; margin: 15px 0;">$9.99</div>
-                            <button class="btn" onclick="selectPlan('monthly')">
-                                Subscribe Monthly
-                            </button>
-                        </div>
-                        <div style="flex: 1; padding: 20px; background: rgba(255,215,0,0.1); border-radius: 10px; border: 1px solid rgba(255,215,0,0.3);">
-                            <h4 style="color: #ffd700;">Yearly</h4>
-                            <div style="font-size: 28px; font-weight: bold; color: #ffd700; margin: 15px 0;">$99.99</div>
-                            <div style="color: #43b581; font-size: 14px; margin-bottom: 15px;">Save 20%</div>
-                            <button class="btn btn-success" onclick="selectPlan('yearly')">
-                                <i class="fas fa-gem"></i> Subscribe Yearly
-                            </button>
-                        </div>
+                <div style="display: flex; gap: 15px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Expiry Date</label>
+                        <input type="text" id="card-expiry" placeholder="MM/YY">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>CVC</label>
+                        <input type="text" id="card-cvc" placeholder="123">
                     </div>
                 </div>
-
-                <div id="payment-section" style="display: none; margin-top: 30px;">
-                    <h3><i class="fas fa-credit-card"></i> Payment Details</h3>
-                    <div class="form-group">
-                        <label>Card Number</label>
-                        <input type="text" id="card-number" placeholder="4242 4242 4242 4242">
-                    </div>
-                    <div style="display: flex; gap: 15px;">
-                        <div class="form-group" style="flex: 1;">
-                            <label>Expiry Date</label>
-                            <input type="text" id="card-expiry" placeholder="MM/YY">
-                        </div>
-                        <div class="form-group" style="flex: 1;">
-                            <label>CVC</label>
-                            <input type="text" id="card-cvc" placeholder="123">
-                        </div>
-                    </div>
-                    <button class="btn btn-success" onclick="processPayment()">
-                        <i class="fas fa-lock"></i> Complete Subscription
-                    </button>
-                </div>
+                <button class="btn btn-success" onclick="processPayment()">
+                    <i class="fas fa-lock"></i> Complete Subscription
+                </button>
             </div>
         </div>
     </div>
@@ -1008,13 +995,6 @@ HTML_TEMPLATE = """
                 console.log('Connected to server');
                 updateConnectionStatus(true);
                 showNotification('Connected to Squad Talk!', 'success');
-                
-                // If user was logged in, restore session
-                const savedUser = localStorage.getItem('squadTalkUser');
-                if (savedUser) {
-                    const userData = JSON.parse(savedUser);
-                    socket.emit('restore_session', userData);
-                }
             });
 
             socket.on('disconnect', () => {
@@ -1042,11 +1022,6 @@ HTML_TEMPLATE = """
             socket.on('server_created', (data) => {
                 addServerToList(data.server);
                 showNotification(`Server "${data.server.name}" created!`, 'success');
-                
-                // Auto-join the created server
-                if (data.server.creator === currentUser) {
-                    joinServer(data.server.id, data.server.name);
-                }
             });
 
             socket.on('update_voice_users', (data) => {
@@ -1073,28 +1048,7 @@ HTML_TEMPLATE = """
                 if (data.username === currentUser) {
                     showNotification('You are now a Premium user! 🎉', 'success');
                     updateUserPremiumStatus(true);
-                    localStorage.setItem('squadTalkUser', JSON.stringify({
-                        username: currentUser,
-                        premium: true
-                    }));
                 }
-            });
-
-            socket.on('session_restored', (data) => {
-                currentUser = data.username;
-                document.getElementById('username-display').textContent = data.username;
-                document.getElementById('auth-modal').style.display = 'none';
-                
-                if (data.premium) {
-                    updateUserPremiumStatus(true);
-                }
-                
-                socket.emit('join', {
-                    username: data.username,
-                    server: currentServer
-                });
-                
-                showNotification(`Welcome back, ${data.username}! 🎉`, 'success');
             });
 
             socket.on('voice_signal', (data) => {
@@ -1110,39 +1064,11 @@ HTML_TEMPLATE = """
             // Load friend requests
             socket.on('friend_requests_list', (requests) => {
                 updateFriendRequestsList(requests);
-                updateFriendRequestsBadge(requests.length);
             });
 
             // Load friends
             socket.on('friends_list', (friends) => {
                 updateFriendsList(friends);
-            });
-
-            // Load messages for server
-            socket.on('server_messages', (messages) => {
-                const messagesDiv = document.getElementById('chat-messages');
-                messagesDiv.innerHTML = '';
-                
-                if (messages && messages.length > 0) {
-                    messages.forEach(msg => {
-                        addMessage(msg);
-                    });
-                } else {
-                    addSystemMessage('Welcome to the server! Start chatting now.', 'info');
-                }
-            });
-
-            // WebRTC signaling
-            socket.on('voice_offer', (data) => {
-                handleVoiceOffer(data);
-            });
-
-            socket.on('voice_answer', (data) => {
-                handleVoiceAnswer(data);
-            });
-
-            socket.on('voice_candidate', (data) => {
-                handleVoiceCandidate(data);
             });
         }
 
@@ -1156,19 +1082,7 @@ HTML_TEMPLATE = """
         }
 
         function showUpgradeModal() {
-            const modal = document.getElementById('upgrade-modal');
-            const alreadyPremium = localStorage.getItem('squadTalkPremium') === 'true';
-            
-            if (alreadyPremium) {
-                document.getElementById('already-premium-section').style.display = 'block';
-                document.getElementById('upgrade-options-section').style.display = 'none';
-                document.getElementById('upgrade-btn').style.display = 'none';
-            } else {
-                document.getElementById('already-premium-section').style.display = 'none';
-                document.getElementById('upgrade-options-section').style.display = 'block';
-            }
-            
-            modal.style.display = 'flex';
+            document.getElementById('upgrade-modal').style.display = 'flex';
         }
 
         function hideUpgradeModal() {
@@ -1247,12 +1161,6 @@ HTML_TEMPLATE = """
                 currentUser = data.username;
                 document.getElementById('username-display').textContent = data.username;
                 document.getElementById('auth-modal').style.display = 'none';
-                
-                // Save user session
-                localStorage.setItem('squadTalkUser', JSON.stringify({
-                    username: data.username,
-                    premium: data.premium
-                }));
                 
                 if (data.premium) {
                     updateUserPremiumStatus(true);
@@ -1337,24 +1245,6 @@ HTML_TEMPLATE = """
             });
             
             hideCreateServerModal();
-        }
-
-        function joinServer(serverId, serverName) {
-            currentServer = serverId;
-            document.getElementById('current-server').innerHTML = 
-                `<i class="fas fa-hashtag"></i> ${serverName}`;
-            
-            // Leave current room
-            socket.emit('leave_server', { server: currentServer, username: currentUser });
-            
-            // Join new server
-            socket.emit('join_server', { 
-                server: serverId, 
-                username: currentUser 
-            });
-            
-            // Request messages for this server
-            socket.emit('get_server_messages', { server: serverId });
         }
 
         // Premium Functions
@@ -1506,14 +1396,10 @@ HTML_TEMPLATE = """
             }
         }
 
-        function updateFriendRequestsBadge(count) {
+        function updateFriendRequestsBadge() {
             const badge = document.getElementById('friend-requests-badge');
-            if (count > 0) {
-                badge.style.display = 'inline-block';
-                badge.textContent = count;
-            } else {
-                badge.style.display = 'none';
-            }
+            badge.style.display = 'inline-block';
+            // Count will be updated from server
         }
 
         // Chat Functions
@@ -1621,17 +1507,8 @@ HTML_TEMPLATE = """
 
         function addServerToList(server) {
             const serversList = document.getElementById('servers-list');
-            
-            // Check if server already exists in list
-            const existing = Array.from(serversList.children).find(child => 
-                child.getAttribute('data-server-id') === server.id
-            );
-            
-            if (existing) return;
-            
             const serverDiv = document.createElement('div');
             serverDiv.className = 'nav-item';
-            serverDiv.setAttribute('data-server-id', server.id);
             serverDiv.innerHTML = `
                 <i class="fas fa-server"></i>
                 <span>${server.name}</span>
@@ -1639,7 +1516,15 @@ HTML_TEMPLATE = """
             `;
             
             serverDiv.onclick = () => {
-                joinServer(server.id, server.name);
+                // Join server logic here
+                currentServer = server.id;
+                document.getElementById('current-server').innerHTML = 
+                    `<i class="fas fa-hashtag"></i> ${server.name}`;
+                socket.emit('join_server', { server: server.id, username: currentUser });
+                
+                // Clear current messages and load server messages
+                document.getElementById('chat-messages').innerHTML = '';
+                addSystemMessage(`Joined ${server.name}`, 'join');
             };
             
             serversList.appendChild(serverDiv);
@@ -1725,17 +1610,6 @@ HTML_TEMPLATE = """
                 
                 showNotification('Voice chat started! 🎤', 'success');
                 
-                // Create WebRTC connection
-                const configuration = {
-                    iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' }
-                    ]
-                };
-                
-                // Create peer connections for other users
-                socket.emit('get_voice_users', { server: currentServer });
-                
             } catch (error) {
                 console.error('Error accessing microphone:', error);
                 if (error.name === 'NotAllowedError') {
@@ -1748,79 +1622,9 @@ HTML_TEMPLATE = """
             }
         }
 
-        // WebRTC Functions
-        function createPeerConnection(userId) {
-            const configuration = {
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' }
-                ]
-            };
-            
-            const pc = new RTCPeerConnection(configuration);
-            
-            // Add local stream
-            if (localStream) {
-                localStream.getTracks().forEach(track => {
-                    pc.addTrack(track, localStream);
-                });
-            }
-            
-            // Handle ICE candidates
-            pc.onicecandidate = (event) => {
-                if (event.candidate) {
-                    socket.emit('voice_candidate', {
-                        to: userId,
-                        candidate: event.candidate,
-                        from: currentUser
-                    });
-                }
-            };
-            
-            // Handle incoming stream
-            pc.ontrack = (event) => {
-                const audio = document.createElement('audio');
-                audio.srcObject = event.streams[0];
-                audio.autoplay = true;
-                audio.controls = false;
-                audio.style.display = 'none';
-                document.body.appendChild(audio);
-            };
-            
-            return pc;
-        }
-
-        async function handleVoiceOffer(data) {
-            const pc = createPeerConnection(data.from);
-            peerConnections[data.from] = pc;
-            
-            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            
-            socket.emit('voice_answer', {
-                to: data.from,
-                answer: answer,
-                from: currentUser
-            });
-        }
-
-        async function handleVoiceAnswer(data) {
-            const pc = peerConnections[data.from];
-            if (pc) {
-                await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-            }
-        }
-
-        async function handleVoiceCandidate(data) {
-            const pc = peerConnections[data.from];
-            if (pc) {
-                try {
-                    await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-                } catch (e) {
-                    console.error('Error adding ICE candidate:', e);
-                }
-            }
+        function handleVoiceSignal(data) {
+            // WebRTC signaling implementation
+            console.log('Voice signal received:', data);
         }
 
         function updateConnectionStatus(connected) {
@@ -1837,16 +1641,6 @@ HTML_TEMPLATE = """
         function updateUserPremiumStatus(isPremium) {
             document.getElementById('user-status').textContent = isPremium ? '👑 Premium User' : 'Free User';
             document.getElementById('user-status').style.color = isPremium ? '#ffd700' : '';
-            
-            // Hide upgrade button if premium
-            const upgradeBtn = document.getElementById('upgrade-btn');
-            if (isPremium) {
-                upgradeBtn.style.display = 'none';
-                localStorage.setItem('squadTalkPremium', 'true');
-            } else {
-                upgradeBtn.style.display = 'block';
-                localStorage.removeItem('squadTalkPremium');
-            }
             
             if (isPremium) {
                 const badge = document.createElement('div');
@@ -1889,12 +1683,6 @@ HTML_TEMPLATE = """
                     hideEmojiPicker();
                 }
             });
-            
-            // Check for saved premium status
-            const savedPremium = localStorage.getItem('squadTalkPremium');
-            if (savedPremium === 'true') {
-                updateUserPremiumStatus(true);
-            }
         };
     </script>
 </body>
@@ -1907,49 +1695,14 @@ app = Flask(__name__)
 app.secret_key = 'squad-talk-secret-key-2025'
 socketio = SocketIO(app, 
                    cors_allowed_origins="*",
-                   async_mode='threading')
+                   async_mode='threading')  # أضف هذا
 
-# Database with persistence
-def load_data():
-    try:
-        if os.path.exists(DATA_FILE):
-            with open(DATA_FILE, 'r') as f:
-                data = json.load(f)
-                print(f"[DATA] Loaded data from {DATA_FILE}")
-                return data
-    except Exception as e:
-        print(f"[ERROR] Failed to load data: {e}")
-    return {
-        'users_db': {},
-        'servers_db': {},
-        'messages_db': {},
-        'friend_requests': {}
-    }
-
-def save_data():
-    try:
-        data = {
-            'users_db': users_db,
-            'servers_db': servers_db,
-            'messages_db': messages_db,
-            'friend_requests': friend_requests_db
-        }
-        with open(DATA_FILE, 'w') as f:
-            json.dump(data, f, indent=2, default=str)
-        print(f"[DATA] Saved data to {DATA_FILE}")
-    except Exception as e:
-        print(f"[ERROR] Failed to save data: {e}")
-
-# Load initial data
-data = load_data()
-users_db = data.get('users_db', {})
-servers_db = data.get('servers_db', {})
-messages_db = data.get('messages_db', {})
-friend_requests_db = data.get('friend_requests', {})
-
-# Active session storage (not persisted)
+# Database simulation (in production, use a real database)
+users_db = {}  # email: {username, password_hash, premium, friends, friend_requests}
 active_users = {}  # username: {user_object, sid}
-voice_users = {}  # username: {peer_id, stream}
+servers_db = {}
+messages_db = {}
+friend_requests_db = {}  # receiver: [sender1, sender2]
 
 @dataclass
 class User:
@@ -1987,7 +1740,7 @@ class Message:
     timestamp: str
 
 def hash_password(password):
-    """Simple password hashing"""
+    """Simple password hashing (in production, use bcrypt)"""
     return hashlib.sha256(password.encode()).hexdigest()
 
 def verify_password(password, hashed):
@@ -1999,27 +1752,26 @@ def validate_gmail(email):
     return re.match(pattern, email) is not None
 
 def send_verification_email(email, username):
-    """Send verification email (simplified)"""
+    """Send verification email (simplified version)"""
     try:
+        # In production, implement actual email sending
         print(f"[EMAIL] Verification email sent to {email} for user {username}")
         return True
     except Exception as e:
         print(f"[EMAIL ERROR] {e}")
         return False
 
-# Initialize default server if not exists
-if "general" not in servers_db:
-    default_server = Server(
-        id="general",
-        name="General",
-        description="Welcome to Squad Talk! Start chatting here.",
-        type="public",
-        creator="system",
-        created_at=datetime.now().isoformat(),
-        members=[]
-    )
-    servers_db["general"] = asdict(default_server)
-    save_data()
+# Initialize default server
+default_server = Server(
+    id="general",
+    name="General",
+    description="Welcome to Squad Talk! Start chatting here.",
+    type="public",
+    creator="system",
+    created_at=datetime.now().isoformat(),
+    members=[]
+)
+servers_db["general"] = default_server
 
 @app.route('/')
 def index():
@@ -2039,61 +1791,13 @@ def handle_disconnect():
             break
     
     if disconnected_user:
-        # Notify all servers this user was in
-        for server_id, server in servers_db.items():
-            if disconnected_user in server.get('members', []):
-                active_users_list = []
-                for uname, udata in active_users.items():
-                    if udata['user'].connected:
-                        active_users_list.append(asdict(udata['user']))
-                
+        for server in servers_db.values():
+            if disconnected_user in server.members:
+                active_users_list = [asdict(u['user']) for u in active_users.values() if u['user'].connected]
                 socketio.emit('user_left', {
                     'username': disconnected_user,
                     'users': active_users_list
-                }, room=server_id)
-        
-        # Clean up voice
-        if disconnected_user in voice_users:
-            del voice_users[disconnected_user]
-    
-    save_data()
-
-@socketio.on('restore_session')
-def handle_restore_session(data):
-    username = data.get('username')
-    
-    if not username:
-        return
-    
-    # Find user in database
-    user_email = None
-    for email, user_data in users_db.items():
-        if user_data['username'] == username:
-            user_email = email
-            break
-    
-    if not user_email:
-        emit('session_error', {'message': 'Session expired'})
-        return
-    
-    user_data = users_db[user_email]
-    
-    # Create active user
-    user = User(
-        username=username,
-        email=user_email,
-        premium=user_data.get('premium', False),
-        connected=True,
-        sid=request.sid,
-        friends=user_data.get('friends', []),
-        is_owner=user_data.get('is_owner', False)
-    )
-    active_users[username] = {'user': user, 'sid': request.sid}
-    
-    emit('session_restored', {
-        'username': username,
-        'premium': user_data.get('premium', False)
-    })
+                }, room=server.id)
 
 @socketio.on('signup')
 def handle_signup(data):
@@ -2138,7 +1842,6 @@ def handle_signup(data):
     # Send verification email
     send_verification_email(email, username)
     
-    save_data()
     emit('signup_success', {'message': 'Account created successfully'})
 
 @socketio.on('login')
@@ -2170,17 +1873,17 @@ def handle_login(data):
         user = User(
             username=username,
             email=email,
-            premium=user_data.get('premium', False),
+            premium=user_data['premium'],
             connected=True,
             sid=request.sid,
-            friends=user_data.get('friends', []),
-            is_owner=user_data.get('is_owner', False)
+            friends=user_data['friends'],
+            is_owner=user_data['is_owner']
         )
         active_users[username] = {'user': user, 'sid': request.sid}
     
     emit('login_success', {
         'username': username,
-        'premium': user_data.get('premium', False)
+        'premium': user_data['premium']
     })
 
 @socketio.on('join')
@@ -2197,16 +1900,14 @@ def handle_join(data):
     if server not in servers_db:
         server = 'general'
     
-    server_data = servers_db[server]
-    if username not in server_data.get('members', []):
-        server_data.setdefault('members', []).append(username)
-        save_data()
+    if username not in servers_db[server].members:
+        servers_db[server].members.append(username)
     
     join_room(server)
     
     # Send existing messages for this server
     if server in messages_db:
-        for msg in messages_db.get(server, [])[-50:]:
+        for msg in messages_db[server][-50:]:
             socketio.emit('message', msg, room=request.sid)
     
     # Get active users list
@@ -2219,41 +1920,8 @@ def handle_join(data):
     }, room=server)
     
     # Send server list to user
-    server_list = list(servers_db.values())
+    server_list = [asdict(s) for s in servers_db.values()]
     emit('server_list', server_list, room=request.sid)
-
-@socketio.on('join_server')
-def handle_join_server(data):
-    username = data['username']
-    server_id = data['server']
-    
-    if username not in active_users or server_id not in servers_db:
-        return
-    
-    join_room(server_id)
-    current_server = server_id
-    
-    # Update server members
-    if username not in servers_db[server_id].get('members', []):
-        servers_db[server_id].setdefault('members', []).append(username)
-        save_data()
-    
-    # Send server messages
-    server_messages = messages_db.get(server_id, [])
-    emit('server_messages', server_messages[-50:])
-    
-    # Update voice users
-    active_users_list = [asdict(u['user']) for u in active_users.values() if u['user'].connected]
-    socketio.emit('update_voice_users', {
-        'users': active_users_list
-    }, room=server_id)
-
-@socketio.on('leave_server')
-def handle_leave_server(data):
-    username = data['username']
-    server = data['server']
-    
-    leave_room(server)
 
 @socketio.on('message')
 def handle_message(data):
@@ -2266,7 +1934,6 @@ def handle_message(data):
         timestamp=data.get('timestamp', datetime.now().isoformat())
     )
     
-    # Store message
     if data['server'] not in messages_db:
         messages_db[data['server']] = []
     messages_db[data['server']].append(asdict(message))
@@ -2275,14 +1942,7 @@ def handle_message(data):
     if len(messages_db[data['server']]) > 100:
         messages_db[data['server']] = messages_db[data['server']][-100:]
     
-    save_data()
     socketio.emit('message', asdict(message), room=data['server'])
-
-@socketio.on('get_server_messages')
-def handle_get_server_messages(data):
-    server_id = data['server']
-    server_messages = messages_db.get(server_id, [])
-    emit('server_messages', server_messages[-50:])
 
 @socketio.on('create_server')
 def handle_create_server(data):
@@ -2297,8 +1957,7 @@ def handle_create_server(data):
         members=[data['creator']]
     )
     
-    servers_db[server_id] = asdict(server)
-    save_data()
+    servers_db[server_id] = server
     
     # Join the creator to the new server
     if data['creator'] in active_users:
@@ -2308,11 +1967,6 @@ def handle_create_server(data):
         'server': asdict(server),
         'creator': data['creator']
     }, broadcast=True)
-
-@socketio.on('get_servers')
-def handle_get_servers():
-    server_list = list(servers_db.values())
-    emit('server_list', server_list)
 
 @socketio.on('upgrade_user')
 def handle_upgrade_user(data):
@@ -2348,7 +2002,6 @@ def handle_upgrade_user(data):
                 user_data['premium_expiry'] = expiry_date.isoformat()
                 break
     
-    save_data()
     socketio.emit('user_upgraded', {
         'username': username,
         'premium': True
@@ -2407,8 +2060,6 @@ def handle_send_friend_request(data):
         if sender not in users_db[receiver_email]['friend_requests']:
             users_db[receiver_email]['friend_requests'].append(sender)
     
-    save_data()
-    
     # Notify receiver if online
     if receiver_username in active_users:
         emit('friend_request', {'from': sender}, room=active_users[receiver_username]['sid'])
@@ -2435,7 +2086,7 @@ def handle_get_friend_requests(data=None):
     
     if user_email and 'friend_requests' in users_db[user_email]:
         requests = users_db[user_email]['friend_requests']
-        emit('friend_requests_list', [{'from': r} for r in requests])
+        emit('friend_requests_list', requests)
     else:
         emit('friend_requests_list', [])
 
@@ -2482,8 +2133,6 @@ def handle_accept_friend_request(data):
     if sender in active_users:
         active_users[sender]['user'].friends = users_db[sender_email]['friends']
     
-    save_data()
-    
     # Notify both users
     if sender in active_users:
         emit('friend_request_accepted', {'username': receiver}, room=active_users[sender]['sid'])
@@ -2512,8 +2161,6 @@ def handle_reject_friend_request(data):
             r for r in users_db[receiver_email]['friend_requests'] 
             if r != sender
         ]
-    
-    save_data()
     
     # Notify sender
     if sender in active_users:
@@ -2585,65 +2232,10 @@ def handle_start_voice(data):
             'users': active_users_list
         }, broadcast=True)
 
-# WebRTC Signaling
-@socketio.on('voice_offer')
-def handle_voice_offer(data):
-    target_sid = None
-    for uname, user_data in active_users.items():
-        if uname == data['to']:
-            target_sid = user_data['sid']
-            break
-    
-    if target_sid:
-        emit('voice_offer', {
-            'offer': data['offer'],
-            'from': data['from']
-        }, room=target_sid)
-
-@socketio.on('voice_answer')
-def handle_voice_answer(data):
-    target_sid = None
-    for uname, user_data in active_users.items():
-        if uname == data['to']:
-            target_sid = user_data['sid']
-            break
-    
-    if target_sid:
-        emit('voice_answer', {
-            'answer': data['answer'],
-            'from': data['from']
-        }, room=target_sid)
-
-@socketio.on('voice_candidate')
-def handle_voice_candidate(data):
-    target_sid = None
-    for uname, user_data in active_users.items():
-        if uname == data['to']:
-            target_sid = user_data['sid']
-            break
-    
-    if target_sid:
-        emit('voice_candidate', {
-            'candidate': data['candidate'],
-            'from': data['from']
-        }, room=target_sid)
-
-@socketio.on('get_voice_users')
-def handle_get_voice_users(data):
-    server = data.get('server', 'general')
-    active_users_list = [asdict(u['user']) for u in active_users.values() if u['user'].connected]
-    emit('update_voice_users', {'users': active_users_list})
-
 if __name__ == '__main__':
     print("=" * 60)
     print("🚀 SQUAD TALK - Voice & Text Chat Application")
     print("=" * 60)
-    print("\n🎯 Fixed Issues:")
-    print("✅ Messages persist after refresh")
-    print("✅ Servers update in real-time (no refresh needed)")
-    print("✅ Voice calls with WebRTC implementation")
-    print("✅ Owner code properly hides upgrade button")
-    print("✅ Session persistence with localStorage")
     print("\n🎯 Features included:")
     print("✅ Gmail authentication (email: your.email@gmail.com)")
     print("✅ Password protection")
@@ -2658,7 +2250,6 @@ if __name__ == '__main__':
     print("\n📧 Note: Only Gmail addresses are accepted for signup")
     print("\n🔑 Owner Code:", OWNER_CODE)
     print("   (Enter this in upgrade modal to get premium for free)")
-    print("\n💾 Data is automatically saved to:", DATA_FILE)
     print("\n🚀 Access the application at: http://localhost:5000")
     print("=" * 60)
     
