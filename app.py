@@ -18,220 +18,6 @@ from email.mime.multipart import MIMEMultipart
 from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
-# في أول الملف بعد imports
-USE_DATABASE = True  # نفترض إننا بنستخدم Database دايماً
-# ============ DATABASE CONNECTION ============
-import psycopg2
-from psycopg2.extras import RealDictCursor
-
-DATABASE_URL = os.environ.get("DATABASE_URL")
-if not DATABASE_URL:
-    print("⚠️ WARNING: DATABASE_URL not set!")
-    print("⚠️ Using JSON fallback mode")
-    USE_DATABASE = False
-else:
-    print(f"✅ DATABASE_URL found: {DATABASE_URL[:50]}...")
-    USE_DATABASE = True
-    
-def get_db():
-    """الاتصال بقاعدة البيانات"""
-    conn = psycopg2.connect(DATABASE_URL, sslmode='require')
-    return conn
-
-def init_db():
-    """إنشاء الجداول أول مرة"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # جدول المستخدمين
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            email VARCHAR(255) PRIMARY KEY,
-            username VARCHAR(100) UNIQUE NOT NULL,
-            password_hash VARCHAR(255) NOT NULL,
-            salt VARCHAR(100) NOT NULL,
-            premium BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP DEFAULT NOW()
-        )
-    ''')
-    
-    # جدول الأصدقاء
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS friends (
-            user1 VARCHAR(100),
-            user2 VARCHAR(100),
-            PRIMARY KEY (user1, user2)
-        )
-    ''')
-    
-    # جدول طلبات الصداقة
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS friend_requests (
-            from_user VARCHAR(100),
-            to_user VARCHAR(100),
-            created_at TIMESTAMP DEFAULT NOW(),
-            PRIMARY KEY (from_user, to_user)
-        )
-    ''')
-    
-    # جدول الرسائل الخاصة
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS private_messages (
-            id VARCHAR(50) PRIMARY KEY,
-            from_user VARCHAR(100),
-            to_user VARCHAR(100),
-            message TEXT,
-            timestamp TIMESTAMP DEFAULT NOW()
-        )
-    ''')
-    
-    # جدول الغرف
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS rooms (
-            id VARCHAR(50) PRIMARY KEY,
-            name VARCHAR(200) NOT NULL,
-            description TEXT,
-            type VARCHAR(50),
-            creator VARCHAR(100),
-            created_at TIMESTAMP DEFAULT NOW()
-        )
-    ''')
-    
-    # جدول إعدادات المستخدمين
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS user_settings (
-            username VARCHAR(100) PRIMARY KEY,
-            display_name VARCHAR(200),
-            avatar TEXT,
-            banner TEXT,
-            bio TEXT,
-            theme VARCHAR(50)
-        )
-    ''')
-    
-    # جدول الجلسات
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS sessions (
-            email VARCHAR(255),
-            token VARCHAR(255),
-            created_at TIMESTAMP,
-            expires_at TIMESTAMP,
-            ip VARCHAR(100),
-            PRIMARY KEY (email, token)
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
-    print("✅ Database tables created successfully!")
-
-def save_user(email, username, password_hash, salt):
-    """حفظ مستخدم جديد"""
-    if not USE_DATABASE:
-        print("⚠️ Using JSON fallback")
-        users_db[email] = {
-            'username': username,
-            'password_hash': password_hash,
-            'salt': salt,
-            'premium': False,
-            'created_at': datetime.now().isoformat()
-        }
-        save_data()
-        print(f"✅ User saved to JSON: {username}")
-        return
-    
-    # استخدم Database
-    try:
-        print(f"🔗 Connecting to database...")
-        conn = get_db()
-        print(f"✅ Database connected")
-        
-        cursor = conn.cursor()
-        print(f"💾 Executing INSERT query...")
-        
-        cursor.execute('''
-            INSERT INTO users (email, username, password_hash, salt, premium)
-            VALUES (%s, %s, %s, %s, %s)
-        ''', (email, username, password_hash, salt, False))
-        
-        conn.commit()
-        print(f"✅ Transaction committed")
-        
-        conn.close()
-        print(f"✅ User saved to database: {username}")
-        
-    except Exception as e:
-        print(f"❌ Database save error: {e}")
-        print(f"Error type: {type(e).__name__}")
-        import traceback
-        traceback.print_exc()
-        raise
-
-
-def get_user(email):
-    """جلب بيانات مستخدم"""
-    if not USE_DATABASE:
-        print(f"⚠️ Using JSON fallback for get_user")
-        return users_db.get(email)
-    
-    try:
-        print(f"🔗 Connecting to database for user lookup...")
-        conn = get_db()
-        print(f"✅ Database connected")
-        
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        print(f"🔍 Executing SELECT query for: {email}")
-        
-        cursor.execute('SELECT * FROM users WHERE email = %s', (email,))
-        user = cursor.fetchone()
-        
-        conn.close()
-        print(f"✅ Query result: {'Found' if user else 'Not found'}")
-        
-        return dict(user) if user else None
-        
-    except Exception as e:
-        print(f"❌ Database get error: {e}")
-        print(f"Error type: {type(e).__name__}")
-        import traceback
-        traceback.print_exc()
-        return None
-
-
-def get_user_by_username(username):
-    """جلب مستخدم بالاسم"""
-    if not USE_DATABASE:
-        for user_data in users_db.values():
-            if user_data.get('username') == username:
-                return user_data
-        return None
-    
-    try:
-        conn = get_db()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute('SELECT * FROM users WHERE username = %s', (username,))
-        user = cursor.fetchone()
-        conn.close()
-        return dict(user) if user else None
-        
-    except Exception as e:
-        print(f"❌ Username lookup error: {e}")
-        return None
-
-def update_user_premium(email, premium_status):
-    """تحديث حالة Premium"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('''
-        UPDATE users 
-        SET premium = %s, premium_until = %s
-        WHERE email = %s
-    ''', (premium_status, (datetime.now() + timedelta(days=30)).isoformat(), email))
-    conn.commit()
-    conn.close()
-
-# ============ END DATABASE ============
-
 # Initialize Flask app FIRST
 app = Flask(__name__)
 app.secret_key = 'echo-room-secret-key-2025'
@@ -239,11 +25,8 @@ app.secret_key = 'echo-room-secret-key-2025'
 # Initialize SocketIO AFTER app
 socketio = SocketIO(app, 
                    cors_allowed_origins="*",
-                   async_mode='eventlet',
-                   logger=True,
-                   engineio_logger=True,
-                   ping_timeout=60,
-                   ping_interval=25)
+                   async_mode='threading')
+
 # Email Configuration (REPLACE WITH REAL CREDENTIALS)
 EMAIL_SENDER = "echoroomteam1@gmail.com"  # Replace with real Gmail
 EMAIL_PASSWORD = "jxsb vfkm zseq zwqq"  # Replace with Gmail App Password
@@ -3932,14 +3715,6 @@ def handle_auto_login(data):
 
 @socketio.on('signup')
 def handle_signup(data):
-    print("=" * 50)
-    print("🔵 SIGNUP REQUEST RECEIVED")
-    print(f"📧 Email: {data.get('email')}")
-    print(f"👤 Username: {data.get('username')}")
-    print(f"🗄️ USE_DATABASE: {USE_DATABASE if 'USE_DATABASE' in globals() else 'Not defined'}")
-    print(f"🔗 DATABASE_URL exists: {bool(DATABASE_URL) if 'DATABASE_URL' in globals() else False}")
-    print("=" * 50)
-    
     username = data.get('username', '').strip()
     email = data.get('email', '').lower().strip()
     password = data.get('password', '')
@@ -3947,155 +3722,87 @@ def handle_signup(data):
     
     # Validation
     if not username or not email or not password:
-        print("❌ Missing fields")
         emit('signup_error', {'message': 'All fields required'})
         return
     
     if not is_valid_gmail(email):
-        print("❌ Invalid Gmail")
         emit('signup_error', {'message': 'Please use a valid Gmail address (@gmail.com)'})
         return
     
-    # تحقق من وجود المستخدم في Database
-    try:
-        print("🔍 Checking existing user...")
-        existing_user = get_user(email)
-        print(f"🔍 Existing user result: {existing_user}")
-        
-        if existing_user:
-            print("❌ Email already registered")
-            emit('signup_error', {'message': 'Email already registered'})
-            return
-    except Exception as e:
-        print(f"❌ Database check error: {e}")
-        import traceback
-        traceback.print_exc()
-        emit('signup_error', {'message': f'Database error: {str(e)}'})
+    # Check if email already exists
+    if email in users_db:
+        emit('signup_error', {'message': 'Email already registered'})
         return
     
-    # تحقق من اسم المستخدم
-    try:
-        print("🔍 Checking username...")
-        existing_username = get_user_by_username(username)
-        print(f"🔍 Username check result: {existing_username}")
-        
-        if existing_username:
-            print("❌ Username already taken")
+    # Check if username already exists
+    for user_data in users_db.values():
+        if user_data.get('username') == username:
             emit('signup_error', {'message': 'Username already taken'})
             return
-    except Exception as e:
-        print(f"❌ Username check error: {e}")
-        import traceback
-        traceback.print_exc()
     
     # Hash password
-    try:
-        print("🔐 Hashing password...")
-        hashed_password, salt = hash_password(password)
-        print("✅ Password hashed")
-    except Exception as e:
-        print(f"❌ Password hash error: {e}")
-        emit('signup_error', {'message': 'Password processing failed'})
-        return
+    hashed_password, salt = hash_password(password)
     
-    # حفظ في Database
-    try:
-        print(f"💾 Saving user to database...")
-        save_user(email, username, hashed_password, salt)
-        print(f"✅ User saved successfully!")
-        
-        # Initialize user data structures (مؤقتاً للأصدقاء)
-        friends_db[username] = []
-        friend_requests_db[username] = []
-        user_settings_db[username] = {
-            'displayName': username,
-            'avatar': None,
-            'banner': None,
-            'bio': '',
-            'theme': 'dark'
-        }
-        
-        # Send welcome email
-        try:
-            print("📧 Sending welcome email...")
-            send_welcome_email(email, username)
-            print("✅ Email sent")
-        except Exception as email_error:
-            print(f"⚠️ Email error (non-critical): {email_error}")
-        
-        emit('signup_success', {
-            'message': 'Account created successfully',
-            'email': email
-        })
-        
-        print(f"✅✅✅ USER REGISTERED SUCCESSFULLY: {username} ({email})")
-        print("=" * 50)
-        
-    except Exception as e:
-        print(f"❌❌❌ SIGNUP ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-        print("=" * 50)
-        emit('signup_error', {'message': f'Registration failed: {str(e)}'})
-
+    # Create user
+    users_db[email] = {
+        'username': username,
+        'password_hash': hashed_password,
+        'salt': salt,
+        'premium': False,
+        'created_at': datetime.now().isoformat(),
+        'verified': False
+    }
+    
+    # Initialize user data structures
+    friends_db[username] = []
+    friend_requests_db[username] = []
+    user_settings_db[username] = {
+        'displayName': username,
+        'avatar': None,
+        'banner': None,
+        'bio': '',
+        'theme': 'dark'
+    }
+    
+    # Create session if remember me is enabled
+    session_token = None
+    if remember_me:
+        session_token = create_session(email)
+    
+    save_data()
+    
+    # Send welcome email
+    send_welcome_email(email, username)
+    
+    emit('signup_success', {
+        'message': 'Account created successfully',
+        'email': email,
+        'session_token': session_token
+    })
 
 @socketio.on('login')
 def handle_login(data):
-    print("=" * 50)
-    print("🔵 LOGIN REQUEST RECEIVED")
-    print(f"📧 Email: {data.get('email')}")
-    print("=" * 50)
-    
     email = data.get('email', '').lower().strip()
     password = data.get('password', '')
     remember_me = data.get('remember_me', True)
     
-    if not email or not password:
-        print("❌ Missing credentials")
-        emit('login_error', {'message': 'Please fill all fields'})
+    if email not in users_db:
+        emit('login_error', {'message': 'Invalid email or password'})
         return
     
-    # جلب المستخدم من Database
-    try:
-        print("🔍 Fetching user from database...")
-        user_data = get_user(email)
-        print(f"🔍 User data: {user_data}")
-        
-        if not user_data:
-            print("❌ User not found")
-            emit('login_error', {'message': 'Invalid email or password'})
-            return
-    except Exception as e:
-        print(f"❌ Database error: {e}")
-        import traceback
-        traceback.print_exc()
-        emit('login_error', {'message': f'Database error: {str(e)}'})
-        return
+    user_data = users_db[email]
     
     # Verify password
-    try:
-        print("🔐 Verifying password...")
-        if not verify_password(password, user_data['password_hash'], user_data['salt']):
-            print("❌ Invalid password")
-            emit('login_error', {'message': 'Invalid email or password'})
-            return
-        print("✅ Password verified")
-    except Exception as e:
-        print(f"❌ Password verification error: {e}")
-        emit('login_error', {'message': 'Login failed'})
+    if not verify_password(password, user_data['password_hash'], user_data['salt']):
+        emit('login_error', {'message': 'Invalid email or password'})
         return
     
     username = user_data['username']
     
     # Create session
-    try:
-        session_token = None
-        if remember_me:
-            print("🔑 Creating session...")
-            session_token = create_session(email)
-            print("✅ Session created")
-    except Exception as e:
-        print(f"⚠️ Session creation error: {e}")
+    session_token = None
+    if remember_me:
+        session_token = create_session(email)
     
     # Store session
     socket_sessions[request.sid] = {
@@ -4112,9 +3819,6 @@ def handle_login(data):
         'premium': user_data.get('premium', False),
         'session_token': session_token
     })
-    
-    print(f"✅✅✅ USER LOGGED IN: {username}")
-    print("=" * 50)
 
 @socketio.on('change_password')
 def handle_change_password(data):
@@ -5022,21 +4726,21 @@ def handle_activate_premium(data):
         emit('premium_error', {'message': 'Upgrade code required'})
         return
     
-    user_email = session['email']
+    user_email = find_user_email(username)
+    if not user_email:
+        emit('premium_error', {'message': 'User not found'})
+        return
     
     # Premium activation code
     if code != 'The Goat':
         emit('premium_error', {'message': 'Invalid upgrade code'})
         return
     
-    # تحديث في Database
-    try:
-        update_user_premium(user_email, True)
-        emit('premium_activated', {'username': username})
-        print(f"✅ Premium activated for: {username}")
-    except Exception as e:
-        print(f"❌ Premium error: {e}")
-        emit('premium_error', {'message': 'Failed to activate premium'})
+    users_db[user_email]['premium'] = True
+    users_db[user_email]['premium_until'] = (datetime.now() + timedelta(days=30)).isoformat()
+    save_data()
+    
+    emit('premium_activated', {'username': username})
 
 @socketio.on('send_friend_request')
 def handle_send_friend_request(data):
@@ -5378,46 +5082,31 @@ def handle_end_call(data):
         'room_id': room_id
     }, room=room_id)
 
-# في النهاية - استبدل كل شيء من if __name__ == '__main__':
-
-# في النهاية - استبدل كل شيء من if __name__ == '__main__':
-
 if __name__ == '__main__':
     print("=" * 60)
-    print("🎤 ECHOROOM - DATABASE VERSION")
+    print("🎤 ECHOROOM - SECURE VERSION (FIXED)")
     print("=" * 60)
-    
-    # عرض Environment Variables
-    print("\n📊 Environment Check:")
-    print(f"   DATABASE_URL: {'Set ✅' if DATABASE_URL else 'Not set ❌'}")
-    print(f"   USE_DATABASE: {USE_DATABASE}")
-    print(f"   EMAIL_SENDER: {EMAIL_SENDER}")
-    
-    # إنشاء الجداول
-    if USE_DATABASE:
-        try:
-            print("\n🔵 Initializing database...")
-            init_db()
-            print("✅ Database initialized successfully")
-        except Exception as e:
-            print(f"❌ Database error: {e}")
-            import traceback
-            traceback.print_exc()
-            print("⚠️  Falling back to JSON mode")
-            USE_DATABASE = False
-    else:
-        print("\n⚠️ Running in JSON mode (no database)")
-    
-    # احصل على PORT من Railway
-    port = int(os.environ.get("PORT", 5000))
-    
-    print(f"\n🚀 Starting server...")
-    print(f"   Host: 0.0.0.0")
-    print(f"   Port: {port}")
+    print("\n✅ ALL ISSUES FIXED:")
+    print("- Persistent user accounts (saved to echoroom_data.json)")
+    print("- Friend requests work correctly")
+    print("- Private chat (DM) messages now send and receive properly")
+    print("- Auto-login works with 'Remember me'")
+    print("- All data persists between sessions")
+    print("\n✅ DEBUG FEATURES:")
+    print("- Console logs for all private messages")
+    print("- Error messages for debugging")
+    print("- Consistent room IDs for private chats")
+    print("\n🔧 SETUP REQUIRED:")
+    print("1. Set EMAIL_SENDER and EMAIL_PASSWORD for Gmail")
+    print("2. Enable Gmail App Password")
+    print("3. Run: python app.py")
+    print("\n🔑 PREMIUM SECRET CODE: 'The Goat'")
+    print("\n🚀 Access: http://localhost:5000")
     print("=" * 60)
     
     socketio.run(app, 
                  host='0.0.0.0', 
-                 port=port,
-                 debug=False,
-                 log_output=True)
+                 port=5000, 
+                 debug=False, 
+                 allow_unsafe_werkzeug=True)
+
