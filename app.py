@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """
 EchoRoom - Secure Voice & Text Chat with Gmail Validation
-FIXED VERSION - No Syntax Errors
 """
 
 import uuid
 import json
-import sys
 import os
 import smtplib
 import ssl
 import re
 import secrets
-import accounts
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
+
+# استيراد نظام الحسابات
+import accounts
 
 # Initialize Flask app FIRST
 app = Flask(__name__)
@@ -5091,5 +5091,3 @@ if __name__ == '__main__':
                  port=5000, 
                  debug=False, 
                  allow_unsafe_werkzeug=True)
-
-
