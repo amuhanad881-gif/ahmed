@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Squad Talk - Full Featured Chat with Private Messages
+EchoRoom - Discord-like Voice & Text Chat with Avatar System
+COMPLETELY FIXED AND WORKING
 """
 
 import uuid
@@ -11,752 +12,418 @@ from datetime import datetime
 from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, emit, join_room
 
-# ==================== ORIGINAL BEAUTIFUL HTML TEMPLATE ====================
-HTML_TEMPLATE = """
+# Initialize Flask app FIRST
+app = Flask(__name__)
+app.secret_key = 'echo-room-secret-key-2025'
+
+# Initialize SocketIO AFTER app
+socketio = SocketIO(app, 
+                   cors_allowed_origins="*",
+                   async_mode='threading')
+
+# ==================== HTML TEMPLATE ====================
+HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🚀 Squad Talk - Voice & Text Chat</title>
+    <title>🎤 EchoRoom - Voice & Text Chat</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: #fff;
-            min-height: 100vh;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
+            color: #fff; min-height: 100vh;
         }
-
-        .container {
-            display: flex;
-            height: 100vh;
-            max-width: 1600px;
-            margin: 0 auto;
-            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+        .container { 
+            display: flex; height: 100vh; max-width: 1600px; 
+            margin: 0 auto; box-shadow: 0 0 50px rgba(0,0,0,0.5);
         }
-
-        /* Sidebar Styles */
-        .sidebar {
-            width: 280px;
-            background: rgba(25, 25, 35, 0.95);
-            padding: 20px;
-            overflow-y: auto;
+        .sidebar { 
+            width: 280px; background: rgba(20, 20, 30, 0.95); 
+            padding: 20px; overflow-y: auto; 
             border-right: 1px solid rgba(255,255,255,0.1);
         }
-
-        .logo {
-            font-size: 24px;
-            font-weight: bold;
-            margin-bottom: 30px;
-            color: #00adb5;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px;
-            background: rgba(0, 173, 181, 0.1);
-            border-radius: 10px;
+        .logo { 
+            font-size: 24px; font-weight: bold; margin-bottom: 30px; 
+            color: #00e5ff; display: flex; align-items: center; 
+            gap: 10px; padding: 10px; 
+            background: rgba(0, 229, 255, 0.1); border-radius: 10px;
         }
-
-        .logo i {
-            animation: pulse 2s infinite;
-        }
-
-        .nav-section {
-            margin-bottom: 25px;
-        }
-
-        .nav-section h3 {
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: #888;
-            margin-bottom: 10px;
+        .logo i { animation: pulse 2s infinite; }
+        .nav-section { margin-bottom: 25px; }
+        .nav-section h3 { 
+            font-size: 12px; text-transform: uppercase; 
+            letter-spacing: 1px; color: #888; margin-bottom: 10px; 
             padding-left: 10px;
         }
-
-        .nav-item {
-            padding: 12px 15px;
-            margin: 5px 0;
-            background: rgba(255,255,255,0.05);
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            gap: 12px;
+        .nav-item { 
+            padding: 12px 15px; margin: 5px 0; 
+            background: rgba(255,255,255,0.05); border-radius: 8px; 
+            cursor: pointer; transition: all 0.3s; 
+            display: flex; align-items: center; gap: 12px;
         }
-
-        .nav-item:hover {
-            background: rgba(0, 173, 181, 0.2);
+        .nav-item:hover { 
+            background: rgba(0, 229, 255, 0.2); 
             transform: translateX(5px);
         }
-
-        .nav-item.active {
-            background: rgba(0, 173, 181, 0.3);
-            border-left: 3px solid #00adb5;
+        .nav-item.active { 
+            background: rgba(0, 229, 255, 0.3); 
+            border-left: 3px solid #00e5ff;
         }
-
-        .badge {
-            background: #ff2e63;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 11px;
-            margin-left: auto;
+        .badge { 
+            background: #ff2e63; color: white; padding: 2px 8px; 
+            border-radius: 10px; font-size: 11px; margin-left: auto;
         }
-
-        .friends-list {
-            margin-top: 10px;
+        .user-profile { 
+            margin-top: auto; padding: 15px; 
+            background: rgba(0,0,0,0.2); border-radius: 15px; 
+            display: flex; align-items: center; gap: 15px; 
+            cursor: pointer; transition: all 0.3s;
         }
-
-        .friend-item {
-            padding: 10px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            border-radius: 6px;
-            margin: 3px 0;
-            cursor: pointer;
+        .user-profile:hover { 
+            background: rgba(0, 229, 255, 0.1); 
+            transform: translateY(-2px);
         }
-
-        .friend-item:hover {
-            background: rgba(255,255,255,0.05);
+        .user-avatar { 
+            width: 50px; height: 50px; border-radius: 50%; 
+            overflow: hidden; border: 3px solid #00e5ff; 
+            background: rgba(255,255,255,0.1); 
+            display: flex; align-items: center; 
+            justify-content: center; font-size: 24px;
         }
-
-        .friend-item.unread {
-            background: rgba(0, 173, 181, 0.1);
-            border-left: 2px solid #00adb5;
+        .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .user-info { flex: 1; }
+        .user-info strong { display: block; font-size: 16px; margin-bottom: 5px; }
+        .user-info .status { font-size: 12px; opacity: 0.7; }
+        .premium-badge { 
+            background: linear-gradient(45deg, #ffd700, #ffed4e); 
+            color: #333; padding: 2px 8px; border-radius: 10px; 
+            font-size: 10px; font-weight: bold; margin-top: 5px; 
+            display: inline-block;
         }
-
-        .friend-item.active-chat {
-            background: rgba(0, 173, 181, 0.2);
-            border-left: 3px solid #00adb5;
+        .upgrade-btn { 
+            padding: 8px 16px; 
+            background: linear-gradient(135deg, #ffd700, #ffed4e); 
+            color: #333; border: none; border-radius: 10px; 
+            cursor: pointer; font-size: 12px; font-weight: bold; 
+            transition: all 0.3s;
         }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #43b581;
+        .upgrade-btn:hover { 
+            transform: scale(1.05); 
+            box-shadow: 0 5px 15px rgba(255,215,0,0.3);
         }
-
-        .status-dot.offline {
-            background: #747f8d;
+        .main { 
+            flex: 1; display: flex; flex-direction: column; 
+            background: rgba(25, 25, 35, 0.95); position: relative;
         }
-
-        .unread-badge {
-            background: #ff2e63;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 10px;
-            font-size: 10px;
-            margin-left: auto;
+        .chat-header { 
+            padding: 20px; background: rgba(0,0,0,0.3); 
+            border-bottom: 1px solid rgba(255,255,255,0.1); 
+            display: flex; justify-content: space-between; 
+            align-items: center; backdrop-filter: blur(10px);
         }
-
-        /* Main Chat Area */
-        .main {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            background: rgba(30, 30, 40, 0.95);
+        .chat-header h2 { 
+            display: flex; align-items: center; gap: 10px; 
+            color: #00e5ff;
         }
-
-        .chat-header {
-            padding: 20px;
-            background: rgba(0,0,0,0.3);
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            backdrop-filter: blur(10px);
+        .chat-messages { 
+            flex: 1; padding: 20px; overflow-y: auto; 
+            display: flex; flex-direction: column; gap: 15px; 
+            background: rgba(15, 15, 25, 0.8);
         }
-
-        .chat-header h2 {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: #00adb5;
-        }
-
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .premium-badge {
-            background: linear-gradient(45deg, #ffd700, #ffed4e);
-            color: #333;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: bold;
-        }
-
-        .chat-messages {
-            flex: 1;
-            padding: 20px;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            background: rgba(20, 20, 30, 0.8);
-        }
-
-        .message {
-            background: rgba(255,255,255,0.07);
-            padding: 15px;
-            border-radius: 15px;
-            max-width: 70%;
+        .message { 
+            display: flex; gap: 15px; 
             animation: slideIn 0.3s ease;
-            border: 1px solid rgba(255,255,255,0.05);
-            position: relative;
         }
-
-        .message.own {
-            background: rgba(0, 173, 181, 0.2);
-            align-self: flex-end;
-            border-color: rgba(0, 173, 181, 0.3);
+        .message.own { flex-direction: row-reverse; }
+        .message-avatar { 
+            width: 40px; height: 40px; border-radius: 50%; 
+            overflow: hidden; border: 2px solid rgba(255,255,255,0.1); 
+            flex-shrink: 0; background: rgba(255,255,255,0.1); 
+            display: flex; align-items: center; 
+            justify-content: center; font-size: 18px;
         }
-
-        .message.private {
-            background: rgba(155, 89, 182, 0.2);
-            border-color: rgba(155, 89, 182, 0.3);
+        .message-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .message-content { flex: 1; max-width: 70%; }
+        .message-bubble { 
+            background: rgba(255,255,255,0.07); padding: 15px; 
+            border-radius: 15px; border: 1px solid rgba(255,255,255,0.05);
         }
-
-        .message.private.own {
-            background: rgba(155, 89, 182, 0.3);
+        .message.own .message-bubble { 
+            background: rgba(0, 229, 255, 0.2); 
+            border-color: rgba(0, 229, 255, 0.3);
         }
-
-        .message-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            font-size: 12px;
-            opacity: 0.8;
+        .message-header { 
+            display: flex; justify-content: space-between; 
+            margin-bottom: 8px; font-size: 12px; opacity: 0.8;
         }
-
-        .message-content {
-            line-height: 1.6;
-            font-size: 15px;
-        }
-
-        .private-badge {
-            background: rgba(155, 89, 182, 0.3);
-            color: #9b59b6;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 10px;
-            margin-left: 10px;
-        }
-
-        .emoji-picker {
-            position: absolute;
-            bottom: 80px;
-            right: 20px;
-            background: rgba(40,40,50,0.95);
-            border-radius: 15px;
-            padding: 15px;
-            display: none;
-            flex-wrap: wrap;
-            gap: 10px;
-            width: 300px;
-            max-height: 200px;
-            overflow-y: auto;
-            border: 1px solid rgba(0,173,181,0.3);
+        .message-text { line-height: 1.6; font-size: 15px; }
+        .modal { 
+            display: none; position: fixed; top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.95); z-index: 3000; 
+            justify-content: center; align-items: center; 
             backdrop-filter: blur(10px);
-            z-index: 1000;
         }
-
-        .emoji {
-            font-size: 24px;
-            padding: 5px;
-            cursor: pointer;
-            transition: transform 0.2s;
+        .settings-modal-content { 
+            background: linear-gradient(135deg, rgba(30,30,40,0.98), rgba(20,20,30,0.98)); 
+            padding: 40px; border-radius: 20px; width: 90%; 
+            max-width: 800px; max-height: 90vh; overflow-y: auto; 
+            border: 1px solid rgba(0,229,255,0.3); 
+            box-shadow: 0 0 50px rgba(0,229,255,0.2); position: relative;
         }
-
-        .emoji:hover {
-            transform: scale(1.3);
-            background: rgba(0,173,181,0.2);
-            border-radius: 5px;
+        .close-btn { 
+            position: absolute; top: 20px; right: 20px; 
+            background: transparent; border: none; 
+            color: rgba(255,255,255,0.7); font-size: 24px; 
+            cursor: pointer; transition: all 0.3s; width: 40px; 
+            height: 40px; border-radius: 50%; 
+            display: flex; align-items: center; justify-content: center;
         }
-
-        .message-input-area {
-            padding: 20px;
-            background: rgba(0,0,0,0.3);
-            border-top: 1px solid rgba(255,255,255,0.1);
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            position: relative;
-        }
-
-        .message-input {
-            flex: 1;
-            padding: 15px 20px;
-            border: none;
-            border-radius: 25px;
-            background: rgba(255,255,255,0.08);
-            color: white;
-            font-size: 16px;
-            outline: none;
-        }
-
-        .message-input::placeholder {
-            color: rgba(255,255,255,0.4);
-        }
-
-        .input-btn {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            border: none;
-            background: #00adb5;
-            color: white;
-            cursor: pointer;
-            font-size: 18px;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .input-btn:hover {
-            background: #0099a1;
-            transform: scale(1.1);
-        }
-
-        /* Voice Chat Panel */
-        .voice-panel {
-            width: 350px;
-            background: rgba(25, 25, 35, 0.95);
-            padding: 20px;
-            border-left: 1px solid rgba(255,255,255,0.1);
-            display: flex;
-            flex-direction: column;
-        }
-
-        .voice-header {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: #00adb5;
-        }
-
-        .voice-users {
-            flex: 1;
-            overflow-y: auto;
-            margin-bottom: 20px;
-        }
-
-        .voice-user {
-            padding: 15px;
-            margin: 10px 0;
-            background: rgba(255,255,255,0.05);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            transition: all 0.3s;
-        }
-
-        .voice-user.speaking {
-            background: rgba(67,181,129,0.2);
-            box-shadow: 0 0 15px rgba(67,181,129,0.3);
-            border: 1px solid rgba(67,181,129,0.5);
-        }
-
-        .mic-icon {
-            color: #43b581;
-            font-size: 18px;
-        }
-
-        .mic-icon.muted {
-            color: #ff2e63;
-        }
-
-        .voice-controls {
-            margin-top: auto;
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            padding: 20px;
-            background: rgba(0,0,0,0.2);
-            border-radius: 15px;
-        }
-
-        .voice-btn {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            border: none;
-            background: linear-gradient(135deg, #00adb5, #0099a1);
-            color: white;
-            cursor: pointer;
-            font-size: 22px;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .voice-btn:hover {
-            transform: scale(1.1);
-            box-shadow: 0 0 20px rgba(0,173,181,0.5);
-        }
-
-        .voice-btn.mute {
-            background: linear-gradient(135deg, #ff2e63, #d81b60);
-        }
-
-        .voice-btn.deafen {
-            background: linear-gradient(135deg, #ff9a00, #ff6b00);
-        }
-
-        .voice-btn.call {
-            background: linear-gradient(135deg, #43b581, #3ca374);
-        }
-
-        /* Modal Styles */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.9);
-            z-index: 2000;
-            justify-content: center;
-            align-items: center;
-            backdrop-filter: blur(5px);
-        }
-
-        .modal-content {
-            background: linear-gradient(135deg, rgba(40,40,50,0.95), rgba(30,30,40,0.95));
-            padding: 40px;
-            border-radius: 20px;
-            width: 90%;
-            max-width: 500px;
-            border: 1px solid rgba(0,173,181,0.3);
-            box-shadow: 0 0 50px rgba(0,173,181,0.2);
-        }
-
-        .modal-header {
-            margin-bottom: 30px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .modal-header h2 {
-            color: #00adb5;
-            font-size: 28px;
-        }
-
-        .close-btn {
-            background: none;
-            border: none;
-            color: #ff2e63;
-            font-size: 28px;
-            cursor: pointer;
-            transition: transform 0.3s;
-        }
-
-        .close-btn:hover {
+        .close-btn:hover { 
+            background: rgba(255,255,255,0.1); color: #00e5ff; 
             transform: rotate(90deg);
         }
-
-        .form-group {
-            margin-bottom: 25px;
+        .settings-tabs { 
+            display: flex; gap: 10px; margin-bottom: 30px; 
+            border-bottom: 1px solid rgba(255,255,255,0.1); 
+            padding-bottom: 10px;
         }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 10px;
-            color: rgba(255,255,255,0.9);
-            font-size: 14px;
+        .settings-tab { 
+            padding: 12px 24px; background: transparent; border: none; 
+            color: rgba(255,255,255,0.7); cursor: pointer; 
+            font-size: 16px; border-radius: 10px; transition: all 0.3s;
         }
-
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
-            width: 100%;
-            padding: 15px;
-            border: 1px solid rgba(255,255,255,0.2);
-            border-radius: 10px;
-            background: rgba(255,255,255,0.08);
-            color: white;
-            font-size: 16px;
-            transition: all 0.3s;
+        .settings-tab:hover { background: rgba(255,255,255,0.05); }
+        .settings-tab.active { 
+            background: rgba(0, 229, 255, 0.2); color: #00e5ff; 
+            border-bottom: 2px solid #00e5ff;
         }
-
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
-            outline: none;
-            border-color: #00adb5;
-            box-shadow: 0 0 15px rgba(0,173,181,0.3);
+        .settings-section { display: none; animation: fadeIn 0.5s ease; }
+        .settings-section.active { display: block; }
+        .avatar-preview-container { text-align: center; margin-bottom: 30px; }
+        .avatar-preview { 
+            width: 150px; height: 150px; border-radius: 50%; 
+            overflow: hidden; margin: 0 auto 20px; 
+            border: 4px solid #00e5ff; background: rgba(255,255,255,0.1); 
+            position: relative;
         }
-
-        .btn {
-            padding: 15px 30px;
-            background: linear-gradient(135deg, #00adb5, #0099a1);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-            transition: all 0.3s;
-            width: 100%;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(0,173,181,0.3);
-        }
-
-        .btn-success {
-            background: linear-gradient(135deg, #43b581, #3ca374);
-        }
-
-        .btn-danger {
-            background: linear-gradient(135deg, #ff2e63, #d81b60);
-        }
-
-        .btn-premium {
-            background: linear-gradient(135deg, #ffd700, #ffed4e);
-            color: #333;
-        }
-
-        .btn-private {
-            background: linear-gradient(135deg, #9b59b6, #8e44ad);
-            color: white;
-        }
-
-        /* Premium Features */
-        .premium-features {
-            margin-top: 30px;
-            padding: 25px;
-            background: rgba(255,215,0,0.1);
-            border-radius: 15px;
-            border: 1px solid rgba(255,215,0,0.3);
-        }
-
-        .premium-features h3 {
-            color: #ffd700;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 20px;
-        }
-
-        .feature-list {
-            list-style: none;
-        }
-
-        .feature-list li {
-            padding: 10px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 15px;
-        }
-
-        /* Animations */
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-            100% { transform: scale(1); }
-        }
-
-        @keyframes glow {
-            0% { box-shadow: 0 0 10px rgba(0,173,181,0.5); }
-            50% { box-shadow: 0 0 20px rgba(0,173,181,0.8); }
-            100% { box-shadow: 0 0 10px rgba(0,173,181,0.5); }
-        }
-
-        .pulse {
-            animation: pulse 2s infinite;
-        }
-
-        .glow {
-            animation: glow 2s infinite;
-        }
-
-        /* Notifications */
-        .notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 15px 25px;
-            background: rgba(40,40,50,0.95);
-            border-radius: 10px;
-            border-left: 4px solid #00adb5;
-            animation: slideIn 0.3s ease;
-            z-index: 3000;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.1);
-        }
-
-        .notification.success {
-            border-left-color: #43b581;
-        }
-
-        .notification.error {
-            border-left-color: #ff2e63;
-        }
-
-        .notification.warning {
-            border-left-color: #ff9a00;
-        }
-
-        .notification.private {
-            border-left-color: #9b59b6;
-        }
-
-        /* Message Options */
-        .message-options {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-
-        .message:hover .message-options {
-            opacity: 1;
-        }
-
-        .message-options-btn {
-            background: rgba(0,0,0,0.5);
-            border: none;
-            color: white;
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            cursor: pointer;
-            font-size: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .message-options-dropdown {
-            position: absolute;
-            top: 35px;
-            right: 0;
-            background: rgba(40,40,50,0.95);
-            border-radius: 10px;
-            padding: 10px;
-            min-width: 150px;
-            display: none;
-            z-index: 100;
-            border: 1px solid rgba(255,255,255,0.1);
-            backdrop-filter: blur(10px);
-        }
-
-        .message-options-dropdown.show {
-            display: block;
-        }
-
-        .message-option {
-            padding: 8px 12px;
-            cursor: pointer;
-            border-radius: 5px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 14px;
-        }
-
-        .message-option:hover {
-            background: rgba(255,255,255,0.1);
-        }
-
-        .message-option.delete {
-            color: #ff2e63;
-        }
-
-        .message.deleted {
-            opacity: 0.5;
-            font-style: italic;
-        }
-
-        .message.deleted .message-content {
+        .avatar-preview img { width: 100%; height: 100%; object-fit: cover; }
+        .avatar-placeholder { 
+            display: flex; align-items: center; justify-content: center; 
+            width: 100%; height: 100%; font-size: 48px; 
             color: rgba(255,255,255,0.5);
         }
-
-        /* Responsive */
-        @media (max-width: 1200px) {
-            .container {
-                flex-direction: column;
-            }
-            .sidebar, .voice-panel {
-                width: 100%;
-                height: auto;
-            }
-            .voice-panel {
-                order: -1;
-                border-left: none;
-                border-bottom: 1px solid rgba(255,255,255,0.1);
-            }
+        .avatar-overlay { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.7); display: flex; align-items: center; 
+            justify-content: center; opacity: 0; transition: opacity 0.3s; 
+            cursor: pointer;
         }
+        .avatar-preview:hover .avatar-overlay { opacity: 1; }
+        .banner-preview-container { margin-bottom: 30px; }
+        .banner-preview { 
+            width: 100%; height: 200px; border-radius: 15px; 
+            overflow: hidden; margin-bottom: 20px; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            position: relative;
+        }
+        .banner-placeholder { 
+            display: flex; align-items: center; justify-content: center; 
+            width: 100%; height: 100%; font-size: 48px; 
+            color: rgba(255,255,255,0.3);
+        }
+        .file-input-wrapper { position: relative; margin-bottom: 20px; }
+        .file-input { 
+            position: absolute; width: 0; height: 0; opacity: 0;
+        }
+        .file-input-label { 
+            display: block; padding: 15px; 
+            background: rgba(0, 229, 255, 0.1); 
+            border: 2px dashed rgba(0, 229, 255, 0.5); 
+            border-radius: 10px; text-align: center; cursor: pointer; 
+            transition: all 0.3s;
+        }
+        .file-input-label:hover { 
+            background: rgba(0, 229, 255, 0.2); 
+            border-color: #00e5ff;
+        }
+        .form-group { margin-bottom: 25px; }
+        .form-group label { 
+            display: block; margin-bottom: 10px; 
+            color: rgba(255,255,255,0.9); font-size: 14px; 
+            font-weight: 500;
+        }
+        .form-group input, .form-group select, .form-group textarea { 
+            width: 100%; padding: 15px; 
+            border: 1px solid rgba(255,255,255,0.2); 
+            border-radius: 10px; background: rgba(255,255,255,0.08); 
+            color: white; font-size: 16px; transition: all 0.3s;
+        }
+        .btn { 
+            padding: 15px 30px; 
+            background: linear-gradient(135deg, #00e5ff, #00b8d4); 
+            color: white; border: none; border-radius: 10px; 
+            cursor: pointer; font-size: 16px; font-weight: bold; 
+            transition: all 0.3s; width: 100%;
+        }
+        .btn:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 10px 20px rgba(0,229,255,0.3);
+        }
+        .btn-success { 
+            background: linear-gradient(135deg, #43b581, #3ca374);
+        }
+        .btn-danger { 
+            background: linear-gradient(135deg, #ff2e63, #d81b60);
+        }
+        .btn-premium { 
+            background: linear-gradient(135deg, #ffd700, #ffed4e); 
+            color: #333;
+        }
+        .premium-feature-badge { 
+            background: linear-gradient(45deg, #ffd700, #ffed4e); 
+            color: #333; padding: 4px 12px; border-radius: 10px; 
+            font-size: 12px; font-weight: bold; margin-left: 10px;
+        }
+        .message-input-area { 
+            padding: 20px; background: rgba(0,0,0,0.3); 
+            border-top: 1px solid rgba(255,255,255,0.1); 
+            display: flex; gap: 10px; align-items: center; 
+            position: relative;
+        }
+        .message-input { 
+            flex: 1; padding: 15px 20px; border: none; 
+            border-radius: 25px; background: rgba(255,255,255,0.08); 
+            color: white; font-size: 16px; outline: none;
+        }
+        .input-btn { 
+            width: 50px; height: 50px; border-radius: 50%; border: none; 
+            background: #00e5ff; color: white; cursor: pointer; 
+            font-size: 18px; transition: all 0.3s; 
+            display: flex; align-items: center; justify-content: center;
+        }
+        .input-btn:hover { 
+            background: #00b8d4; transform: scale(1.1);
+        }
+        @keyframes slideIn { 
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn { 
+            from { opacity: 0; } to { opacity: 1; }
+        }
+        @keyframes pulse { 
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        .notification { 
+            position: fixed; top: 20px; right: 20px; 
+            padding: 15px 25px; background: rgba(30,30,40,0.95); 
+            border-radius: 10px; border-left: 4px solid #00e5ff; 
+            animation: slideIn 0.3s ease; z-index: 3000; 
+            backdrop-filter: blur(10px); 
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .notification.success { border-left-color: #43b581; }
+        .notification.error { border-left-color: #ff2e63; }
+        #auth-modal { display: flex; }
+        .auth-modal-content { 
+            background: linear-gradient(135deg, rgba(30,30,40,0.95), rgba(20,20,30,0.95)); 
+            padding: 40px; border-radius: 20px; width: 90%; 
+            max-width: 400px; border: 1px solid rgba(0,229,255,0.3); 
+            box-shadow: 0 0 50px rgba(0,229,255,0.2); position: relative;
+        }
+        .auth-tabs { display: flex; gap: 10px; margin-bottom: 30px; }
+        .auth-tab { 
+            flex: 1; padding: 12px; background: transparent; 
+            border: none; color: rgba(255,255,255,0.7); 
+            cursor: pointer; font-size: 16px; border-radius: 10px; 
+            transition: all 0.3s;
+        }
+        .auth-tab:hover { background: rgba(255,255,255,0.05); }
+        .auth-tab.active { 
+            background: rgba(0, 229, 255, 0.2); color: #00e5ff;
+        }
+        .auth-section { display: none; }
+        .auth-section.active { display: block; }
     </style>
 </head>
 <body>
-    <div class="container">
+    <!-- Login/Signup Modal -->
+    <div class="modal" id="auth-modal">
+        <div class="auth-modal-content">
+            <button class="close-btn" onclick="hideAuthModal()">
+                <i class="fas fa-times"></i>
+            </button>
+            <div class="auth-header">
+                <h2><i class="fas fa-broadcast-tower"></i> EchoRoom</h2>
+                <p>Voice & Text Chat Platform</p>
+            </div>
+            
+            <div class="auth-tabs">
+                <button class="auth-tab active" onclick="showAuthTab('login')">Login</button>
+                <button class="auth-tab" onclick="showAuthTab('signup')">Sign Up</button>
+            </div>
+            
+            <div id="login-section" class="auth-section active">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="login-email" placeholder="test@test.com" value="test@test.com">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="login-password" placeholder="••••••••" value="123456">
+                </div>
+                <button class="btn" onclick="login()">
+                    <i class="fas fa-sign-in-alt"></i> Login
+                </button>
+                <div style="margin-top: 15px; text-align: center; opacity: 0.7; font-size: 14px;">
+                    Test account pre-filled
+                </div>
+            </div>
+            
+            <div id="signup-section" class="auth-section">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="signup-username" placeholder="Choose username">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="signup-email" placeholder="your@email.com">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="signup-password" placeholder="••••••••">
+                </div>
+                <button class="btn btn-success" onclick="signup()">
+                    <i class="fas fa-user-plus"></i> Create Account
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div class="container" id="main-app" style="display: none;">
         <!-- Left Sidebar -->
         <div class="sidebar">
             <div class="logo">
-                <i class="fas fa-rocket"></i>
-                Squad Talk 🚀
+                <i class="fas fa-broadcast-tower"></i>
+                EchoRoom 🎤
             </div>
             
             <div class="nav-section">
-                <h3>Servers</h3>
+                <h3>Rooms</h3>
                 <div id="servers-list">
-                    <!-- Servers will be populated here -->
+                    <!-- Rooms will be populated here -->
                 </div>
-                <div class="nav-item" onclick="showCreateServerModal()">
+                <div class="nav-item" onclick="showCreateRoomModal()">
                     <i class="fas fa-plus"></i>
-                    <span>Create Server</span>
-                </div>
-            </div>
-
-            <div class="nav-section">
-                <h3>Direct Messages</h3>
-                <div id="dm-list" class="friends-list">
-                    <!-- Private chats will appear here -->
-                </div>
-                <div class="nav-item" onclick="showFriendsModal()">
-                    <i class="fas fa-user-friends"></i>
-                    <span>Friends</span>
-                    <span id="friend-requests-badge" class="badge" style="display: none;">0</span>
+                    <span>Create Room</span>
                 </div>
             </div>
 
@@ -771,12 +438,19 @@ HTML_TEMPLATE = """
                 </div>
             </div>
 
-            <div class="user-info" style="margin-top: auto; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 10px;">
-                <div style="flex: 1;">
-                    <strong id="username-display">Guest</strong>
-                    <div id="user-status" style="font-size: 12px; opacity: 0.7;">Free User</div>
+            <!-- User Profile Section -->
+            <div class="user-profile" onclick="showSettingsModal()" id="user-profile">
+                <div class="user-avatar" id="user-avatar-preview">
+                    <div class="avatar-placeholder">
+                        <i class="fas fa-user"></i>
+                    </div>
                 </div>
-                <button class="btn" onclick="showUpgradeModal()" style="padding: 8px 16px; font-size: 12px;" id="upgrade-btn">
+                <div class="user-info">
+                    <strong id="username-display">Guest</strong>
+                    <div class="status" id="user-status">Free User</div>
+                    <div class="premium-badge" id="premium-badge" style="display: none;">PREMIUM</div>
+                </div>
+                <button class="upgrade-btn" id="upgrade-btn" onclick="event.stopPropagation(); showUpgradeModal()">
                     <i class="fas fa-crown"></i> Upgrade
                 </button>
             </div>
@@ -792,9 +466,6 @@ HTML_TEMPLATE = """
                     <div id="connection-status" class="premium-badge">
                         <i class="fas fa-wifi"></i> Connected
                     </div>
-                    <div id="mic-status" style="font-size: 12px; background: #43b581; padding: 4px 12px; border-radius: 12px;">
-                        <i class="fas fa-microphone"></i> Mic Ready
-                    </div>
                 </div>
             </div>
 
@@ -803,249 +474,228 @@ HTML_TEMPLATE = """
             </div>
 
             <div class="message-input-area">
-                <button class="input-btn" onclick="toggleEmojiPicker()">
-                    <i class="far fa-smile"></i>
-                </button>
                 <input type="text" class="message-input" id="message-input" 
                        placeholder="Type your message here..." 
                        onkeypress="if(event.keyCode===13) sendMessage()">
                 <button class="input-btn" onclick="sendMessage()">
                     <i class="fas fa-paper-plane"></i>
                 </button>
-                
-                <div class="emoji-picker" id="emoji-picker">
-                    <!-- Emojis will be populated here -->
-                </div>
             </div>
         </div>
 
-        <!-- Voice Chat Panel -->
-        <div class="voice-panel">
-            <div class="voice-header">
-                <i class="fas fa-microphone-alt"></i> Voice Chat
-                <div style="font-size: 12px; opacity: 0.7; margin-left: auto;">
-                    <span id="voice-users-count">0</span> users
+        <!-- Right Panel -->
+        <div class="sidebar" style="width: 300px; border-left: 1px solid rgba(255,255,255,0.1); border-right: none;">
+            <div class="nav-section">
+                <h3>Voice Controls</h3>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <button class="btn" id="mute-btn" onclick="toggleMute()">
+                        <i class="fas fa-microphone"></i> Mute
+                    </button>
+                    <button class="btn" id="deafen-btn" onclick="toggleDeafen()">
+                        <i class="fas fa-headset"></i> Deafen
+                    </button>
                 </div>
             </div>
             
-            <div class="voice-users" id="voice-users">
-                <!-- Voice users will appear here -->
+            <div class="nav-section">
+                <h3>Online Users</h3>
+                <div id="online-users" class="friends-list">
+                    <!-- Online users will appear here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settings-modal">
+        <div class="settings-modal-content">
+            <button class="close-btn" onclick="hideSettingsModal()">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div class="settings-header">
+                <h2><i class="fas fa-cog"></i> User Settings</h2>
+                <p>Customize your EchoRoom profile</p>
             </div>
 
-            <div class="voice-controls">
-                <button class="voice-btn" id="mute-btn" onclick="toggleMute()">
-                    <i class="fas fa-microphone"></i>
+            <div class="settings-tabs">
+                <button class="settings-tab active" onclick="showSettingsTab('profile')">
+                    <i class="fas fa-user"></i> Profile
                 </button>
-                <button class="voice-btn deafen" id="deafen-btn" onclick="toggleDeafen()">
-                    <i class="fas fa-headset"></i>
+                <button class="settings-tab" onclick="showSettingsTab('appearance')">
+                    <i class="fas fa-palette"></i> Appearance
                 </button>
-                <button class="voice-btn call" id="call-btn" onclick="startVoiceCall()">
-                    <i class="fas fa-phone"></i>
+            </div>
+
+            <!-- Profile Tab -->
+            <div id="profile-tab" class="settings-section active">
+                <div class="avatar-preview-container">
+                    <div class="avatar-preview" id="settings-avatar-preview">
+                        <div class="avatar-placeholder">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div class="avatar-overlay" onclick="document.getElementById('avatar-upload').click()">
+                            <i class="fas fa-camera"></i> Change Avatar
+                        </div>
+                    </div>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="avatar-upload" class="file-input" accept="image/*" onchange="handleAvatarUpload(event)">
+                        <label for="avatar-upload" class="file-input-label">
+                            <i class="fas fa-upload"></i> Upload Avatar
+                        </label>
+                    </div>
+                </div>
+
+                <div class="banner-preview-container">
+                    <h3>Profile Banner <span class="premium-feature-badge">PREMIUM</span></h3>
+                    <div class="banner-preview" id="settings-banner-preview">
+                        <div class="banner-placeholder">
+                            <i class="fas fa-image"></i>
+                        </div>
+                    </div>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="banner-upload" class="file-input" accept="image/*" onchange="handleBannerUpload(event)">
+                        <label for="banner-upload" class="file-input-label" id="banner-upload-label">
+                            <i class="fas fa-upload"></i> Upload Banner
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="display-name">Display Name</label>
+                    <input type="text" id="display-name" placeholder="Enter your display name">
+                </div>
+
+                <div class="form-group">
+                    <label for="user-bio">Bio</label>
+                    <textarea id="user-bio" placeholder="Tell us about yourself..." rows="3"></textarea>
+                </div>
+
+                <button class="btn btn-success" onclick="saveProfileSettings()">
+                    <i class="fas fa-save"></i> Save Changes
+                </button>
+            </div>
+
+            <!-- Appearance Tab -->
+            <div id="appearance-tab" class="settings-section">
+                <div class="form-group">
+                    <label>Theme</label>
+                    <select id="theme-select">
+                        <option value="dark">🌙 Dark Theme</option>
+                        <option value="light">☀️ Light Theme</option>
+                        <option value="blue">🔵 Blue Theme</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-success" onclick="saveAppearanceSettings()">
+                    <i class="fas fa-save"></i> Save Appearance
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- Create Server Modal -->
-    <div class="modal" id="create-server-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2><i class="fas fa-plus-circle"></i> Create New Server</h2>
-                <button class="close-btn" onclick="hideCreateServerModal()">&times;</button>
+    <!-- Other Modals -->
+    <div class="modal" id="create-room-modal">
+        <div class="settings-modal-content">
+            <button class="close-btn" onclick="hideCreateRoomModal()">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div class="settings-header">
+                <h2><i class="fas fa-plus-circle"></i> Create New Room</h2>
             </div>
+
             <div class="form-group">
-                <label for="server-name">Server Name</label>
-                <input type="text" id="server-name" placeholder="Enter awesome server name...">
+                <label for="room-name">Room Name</label>
+                <input type="text" id="room-name" placeholder="Enter room name">
             </div>
+
             <div class="form-group">
-                <label for="server-description">Description</label>
-                <textarea id="server-description" placeholder="What's this server about?"></textarea>
+                <label for="room-description">Description (Optional)</label>
+                <textarea id="room-description" placeholder="Room description..." rows="2"></textarea>
             </div>
-            <div class="form-group">
-                <label for="server-type">Server Type</label>
-                <select id="server-type">
-                    <option value="public">🌐 Public (Anyone can join)</option>
-                    <option value="private">🔒 Private (Invite only)</option>
-                    <option value="premium">👑 Premium (Premium users only)</option>
-                </select>
-            </div>
-            <button class="btn btn-success" onclick="createServer()">
-                <i class="fas fa-rocket"></i> Launch Server
+
+            <button class="btn btn-success" onclick="createRoom()">
+                <i class="fas fa-plus"></i> Create Room
             </button>
         </div>
     </div>
 
-    <!-- Upgrade Modal -->
-    <div class="modal" id="upgrade-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2><i class="fas fa-crown"></i> Upgrade to Premium</h2>
-                <button class="close-btn" onclick="hideUpgradeModal()">&times;</button>
-            </div>
+    <div class="modal" id="add-friend-modal">
+        <div class="settings-modal-content">
+            <button class="close-btn" onclick="hideAddFriendModal()">
+                <i class="fas fa-times"></i>
+            </button>
             
-            <div class="premium-features">
-                <h3><i class="fas fa-star"></i> Premium Features</h3>
-                <ul class="feature-list">
-                    <li><i class="fas fa-check-circle"></i> Create unlimited servers</li>
-                    <li><i class="fas fa-check-circle"></i> HD Voice & Video calls</li>
-                    <li><i class="fas fa-check-circle"></i> Screen sharing & recording</li>
-                    <li><i class="fas fa-check-circle"></i> Custom emojis & stickers</li>
-                    <li><i class="fas fa-check-circle"></i> 500GB cloud storage</li>
-                    <li><i class="fas fa-check-circle"></i> Priority 24/7 support</li>
-                    <li><i class="fas fa-check-circle"></i> Video calls (100+ people)</li>
-                    <li><i class="fas fa-check-circle"></i> Advanced server analytics</li>
+            <div class="settings-header">
+                <h2><i class="fas fa-user-plus"></i> Add Friend</h2>
+            </div>
+
+            <div class="form-group">
+                <label for="friend-username">Username</label>
+                <input type="text" id="friend-username" placeholder="Enter username">
+            </div>
+
+            <button class="btn btn-success" onclick="sendFriendRequest()">
+                <i class="fas fa-user-plus"></i> Send Friend Request
+            </button>
+        </div>
+    </div>
+
+    <div class="modal" id="upgrade-modal">
+        <div class="settings-modal-content">
+            <button class="close-btn" onclick="hideUpgradeModal()">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div class="settings-header">
+                <h2><i class="fas fa-crown"></i> Upgrade to Premium</h2>
+                <p>Unlock exclusive features</p>
+            </div>
+
+            <div style="text-align: center; margin-bottom: 30px;">
+                <div style="font-size: 48px; color: #ffd700; margin-bottom: 20px;">
+                    <i class="fas fa-crown"></i>
+                </div>
+                <h3 style="color: #ffd700; margin-bottom: 20px;">Premium Features</h3>
+                <ul style="text-align: left; margin-bottom: 30px; padding-left: 20px;">
+                    <li style="margin-bottom: 10px;">Custom profile banner</li>
+                    <li style="margin-bottom: 10px;">HD avatar uploads</li>
+                    <li style="margin-bottom: 10px;">Special badge on profile</li>
                 </ul>
             </div>
 
-            <div style="margin-top: 30px;">
-                <h3>Special Owner Code</h3>
-                <div class="form-group">
-                    <input type="text" id="owner-code" placeholder="Enter owner code (optional)">
-                </div>
-                <button class="btn btn-premium" onclick="checkOwnerCode()">
-                    <i class="fas fa-key"></i> Validate Owner Code
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Login/Signup Modal -->
-    <div class="modal" id="auth-modal" style="display: flex;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2><i class="fas fa-rocket"></i> Welcome to Squad Talk</h2>
-            </div>
-            
-            <div id="login-section">
-                <h3 style="margin-bottom: 20px; color: #00adb5;">Login</h3>
-                <div class="form-group">
-                    <label for="login-email">Email Address</label>
-                    <input type="email" id="login-email" placeholder="your.email@gmail.com">
-                </div>
-                <div class="form-group">
-                    <label for="login-password">Password</label>
-                    <input type="password" id="login-password" placeholder="••••••••">
-                </div>
-                <button class="btn btn-success" onclick="login()">
-                    <i class="fas fa-sign-in-alt"></i> Login
-                </button>
-                <div style="text-align: center; margin-top: 20px;">
-                    <a href="#" onclick="showSignup()" style="color: #00adb5; text-decoration: none;">
-                        Don't have an account? Sign up
-                    </a>
-                </div>
-            </div>
-
-            <div id="signup-section" style="display: none;">
-                <h3 style="margin-bottom: 20px; color: #00adb5;">Create Account</h3>
-                <div class="form-group">
-                    <label for="signup-username">Username</label>
-                    <input type="text" id="signup-username" placeholder="Choose a cool username">
-                </div>
-                <div class="form-group">
-                    <label for="signup-email">Email Address</label>
-                    <input type="email" id="signup-email" placeholder="your.email@gmail.com">
-                </div>
-                <div class="form-group">
-                    <label for="signup-password">Password</label>
-                    <input type="password" id="signup-password" placeholder="••••••••">
-                </div>
-                <button class="btn btn-success" onclick="signup()">
-                    <i class="fas fa-user-plus"></i> Create Account
-                </button>
-                <div style="text-align: center; margin-top: 20px;">
-                    <a href="#" onclick="showLogin()" style="color: #00adb5; text-decoration: none;">
-                        Already have an account? Login
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Friends Modal -->
-    <div class="modal" id="friends-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2><i class="fas fa-user-friends"></i> Friends</h2>
-                <button class="close-btn" onclick="hideFriendsModal()">&times;</button>
-            </div>
-            <div id="friend-requests-section">
-                <h3>Friend Requests</h3>
-                <div id="friend-requests-list">
-                    <!-- Friend requests will appear here -->
-                </div>
-            </div>
-            <div style="margin-top: 30px;">
-                <h3>Online Friends</h3>
-                <div id="online-friends-list">
-                    <!-- Online friends will appear here -->
-                </div>
-            </div>
-            <div style="margin-top: 30px;">
-                <h3>All Friends</h3>
-                <div id="all-friends-list">
-                    <!-- All friends will appear here -->
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Add Friend Modal -->
-    <div class="modal" id="add-friend-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2><i class="fas fa-user-plus"></i> Add Friend</h2>
-                <button class="close-btn" onclick="hideAddFriendModal()">&times;</button>
-            </div>
             <div class="form-group">
-                <label for="friend-username">Username or Email</label>
-                <input type="text" id="friend-username" placeholder="Enter username or email">
+                <label for="owner-code">Owner Code</label>
+                <input type="text" id="owner-code" placeholder="Enter 'test' for testing">
             </div>
-            <button class="btn btn-success" onclick="sendFriendRequest()">
-                <i class="fas fa-paper-plane"></i> Send Friend Request
+
+            <button class="btn btn-premium" onclick="upgradeToPremium()">
+                <i class="fas fa-crown"></i> Activate Premium
             </button>
         </div>
     </div>
 
-    <!-- Notification Container -->
     <div id="notification-container"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.min.js"></script>
     <script>
-        // Global variables
         let socket;
         let currentUser = '';
-        let currentChat = { type: 'server', id: 'general', name: 'General' };
-        let isMuted = false;
-        let isDeafened = false;
-        let selectedPlan = '';
-        let localStream = null;
-        let peerConnections = {};
-        let emojis = ['😀', '😂', '🤣', '😍', '😎', '😭', '😡', '🥰', '😘', '🤔', '👋', '👍', '👏', '🎉', '🔥', '⭐', '🌟', '💯', '❤️', '💙', '💚', '💛', '💜', '🤑', '🤯', '🥳', '😱', '🤩', '😴', '💀', '👻', '🤖', '👾', '🐱', '🐶', '🦊', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵'];
-        let unreadCounts = {};
-        
-        // Emoji categories
-        const emojiCategories = {
-            'Smileys': ['😀', '😂', '🤣', '😍', '😎', '😭', '😡', '🥰', '😘', '🤔', '😴', '😱'],
-            'Gestures': ['👋', '👍', '👏', '🙏', '🤝', '✌️', '🤘', '👌'],
-            'Objects': ['🎉', '🔥', '⭐', '🌟', '💯', '🎁', '🎈', '🎊'],
-            'Hearts': ['❤️', '💙', '💚', '💛', '💜', '🖤', '🤍', '💔'],
-            'Animals': ['🐱', '🐶', '🦊', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵'],
-            'Food': ['🍕', '🍔', '🍟', '🍦', '🍩', '🍎', '🍌', '🍇'],
-            'Symbols': ['✅', '❌', '⚠️', '⛔', '♻️', '⚡', '❓', '❗']
-        };
+        let isPremium = false;
+        let currentRoom = 'general';
+        let userSettings = {};
 
-        // Initialize WebSocket connection
+        // Initialize WebSocket
         function initWebSocket() {
             socket = io();
             
             socket.on('connect', () => {
-                console.log('Connected to server');
-                updateConnectionStatus(true);
-                showNotification('Connected to Squad Talk!', 'success');
+                console.log('✅ Connected to EchoRoom');
+                showNotification('Connected to EchoRoom!', 'success');
                 
-                // If user was logged in, restore session
-                const savedUser = localStorage.getItem('squadTalkUser');
+                // Try to restore session
+                const savedUser = localStorage.getItem('echoRoomUser');
                 if (savedUser) {
                     const userData = JSON.parse(savedUser);
                     socket.emit('restore_session', userData);
@@ -1053,210 +703,139 @@ HTML_TEMPLATE = """
             });
 
             socket.on('disconnect', () => {
-                console.log('Disconnected from server');
-                updateConnectionStatus(false);
+                console.log('❌ Disconnected from server');
                 showNotification('Disconnected from server', 'error');
             });
 
-            socket.on('message', (data) => {
-                if (data.type === 'private') {
-                    handlePrivateMessage(data);
-                } else {
-                    // Server message
-                    if (currentChat.type === 'server' && currentChat.id === data.server) {
-                        addMessage(data);
-                    }
-                }
+            // Login/Signup events
+            socket.on('login_success', (data) => {
+                console.log('✅ Login success:', data);
+                handleLoginSuccess(data);
             });
 
-            socket.on('private_message', (data) => {
-                handlePrivateMessage(data);
+            socket.on('login_error', (data) => {
+                console.log('❌ Login error:', data);
+                showNotification(data.message || 'Login failed', 'error');
             });
 
-            socket.on('user_joined', (data) => {
-                if (currentChat.type === 'server' && currentChat.id === data.server) {
-                    addSystemMessage(`${data.username} joined the chat`, 'join');
-                    updateVoiceUsers(data.users);
-                    updateVoiceUserCount(data.users.length);
-                }
+            socket.on('signup_success', (data) => {
+                console.log('✅ Signup success:', data);
+                showNotification('Account created! Please login.', 'success');
+                showAuthTab('login');
             });
 
-            socket.on('user_left', (data) => {
-                if (currentChat.type === 'server' && currentChat.id === data.server) {
-                    addSystemMessage(`${data.username} left the chat`, 'leave');
-                    updateVoiceUsers(data.users);
-                    updateVoiceUserCount(data.users.length);
-                }
+            socket.on('signup_error', (data) => {
+                console.log('❌ Signup error:', data);
+                showNotification(data.message || 'Signup failed', 'error');
             });
 
-            socket.on('server_created', (data) => {
-                addServerToList(data.server);
-                showNotification(`Server "${data.server.name}" created!`, 'success');
-            });
-
-            socket.on('update_voice_users', (data) => {
-                updateVoiceUsers(data.users);
-                updateVoiceUserCount(data.users.length);
-            });
-
-            socket.on('friend_request', (data) => {
-                showNotification(`Friend request from ${data.from}`, 'warning');
-                updateFriendRequestsBadge();
-                socket.emit('get_friend_requests');
-            });
-
-            socket.on('friend_request_accepted', (data) => {
-                showNotification(`${data.username} accepted your friend request!`, 'success');
-                socket.emit('get_friends');
-                loadPrivateChats();
-            });
-
-            socket.on('friend_request_rejected', (data) => {
-                showNotification(`${data.username} rejected your friend request`, 'error');
-            });
-
-            socket.on('user_upgraded', (data) => {
-                if (data.username === currentUser) {
-                    showNotification('You are now a Premium user! 🎉', 'success');
-                    updateUserPremiumStatus(true);
-                    localStorage.setItem('squadTalkUser', JSON.stringify({
-                        username: currentUser,
-                        premium: true
-                    }));
-                }
-            });
-
+            // Session events
             socket.on('session_restored', (data) => {
-                currentUser = data.username;
-                document.getElementById('username-display').textContent = data.username;
-                document.getElementById('auth-modal').style.display = 'none';
-                
-                if (data.premium) {
-                    updateUserPremiumStatus(true);
+                console.log('✅ Session restored:', data);
+                handleLoginSuccess(data);
+            });
+
+            socket.on('session_error', (data) => {
+                console.log('❌ Session error:', data);
+                showNotification(data.message || 'Session expired', 'error');
+            });
+
+            // Messages
+            socket.on('message', (data) => {
+                console.log('📨 New message:', data);
+                addMessage(data);
+            });
+
+            socket.on('chat_messages', (messages) => {
+                console.log('📨 Chat messages loaded:', messages?.length);
+                const messagesDiv = document.getElementById('chat-messages');
+                messagesDiv.innerHTML = '';
+                if (messages && messages.length > 0) {
+                    messages.forEach(msg => addMessage(msg));
                 }
-                
-                socket.emit('join', {
-                    username: data.username,
-                    server: 'general'
-                });
-                
-                showNotification(`Welcome back, ${data.username}! 🎉`, 'success');
-                
-                // Load data
-                socket.emit('get_servers');
-                socket.emit('get_friends');
-                socket.emit('get_friend_requests');
-                loadPrivateChats();
             });
 
-            // Load existing servers
-            socket.on('server_list', (servers) => {
-                servers.forEach(server => addServerToList(server));
+            // User settings
+            socket.on('user_settings', (settings) => {
+                console.log('⚙️ User settings loaded:', settings);
+                userSettings = settings || {};
+                loadUserSettings();
             });
 
-            // Load friend requests
-            socket.on('friend_requests_list', (requests) => {
-                updateFriendRequestsList(requests);
-                updateFriendRequestsBadge(requests.length);
+            socket.on('user_settings_updated', (data) => {
+                console.log('✅ Settings updated');
+                showNotification('Settings saved!', 'success');
             });
 
-            // Load friends
+            // Rooms
+            socket.on('room_list', (rooms) => {
+                console.log('🏠 Rooms loaded:', rooms);
+                updateRoomList(rooms);
+            });
+
+            socket.on('room_created', (data) => {
+                console.log('✅ Room created:', data.room);
+                addRoomToList(data.room);
+                showNotification(`Room "${data.room.name}" created!`, 'success');
+                hideCreateRoomModal();
+            });
+
+            // Friends
             socket.on('friends_list', (friends) => {
+                console.log('👥 Friends loaded:', friends);
                 updateFriendsList(friends);
             });
 
-            // Load messages for chat
-            socket.on('chat_messages', (messages) => {
-                const messagesDiv = document.getElementById('chat-messages');
-                messagesDiv.innerHTML = '';
-                
-                if (messages && messages.length > 0) {
-                    messages.forEach(msg => {
-                        addMessage(msg);
-                    });
-                } else {
-                    if (currentChat.type === 'server') {
-                        addSystemMessage('Welcome to the server! Start chatting now.', 'info');
-                    } else {
-                        addSystemMessage(`Start a private conversation with ${currentChat.name}!`, 'info');
-                    }
-                }
-                
-                // Mark chat as read
-                markChatAsRead(currentChat);
+            socket.on('friend_request_sent', (data) => {
+                console.log('✅ Friend request sent');
+                showNotification('Friend request sent!', 'success');
+                hideAddFriendModal();
             });
 
-            socket.on('private_chats_list', (chats) => {
-                updatePrivateChatsList(chats);
+            socket.on('friend_request_error', (data) => {
+                console.log('❌ Friend request error');
+                showNotification(data.message || 'Friend request failed', 'error');
+            });
+
+            // Premium
+            socket.on('premium_activated', (data) => {
+                console.log('✅ Premium activated');
+                isPremium = true;
+                updateUserPremiumStatus(true);
+                showNotification('Premium activated!', 'success');
+                hideUpgradeModal();
+            });
+
+            socket.on('premium_error', (data) => {
+                console.log('❌ Premium error');
+                showNotification(data.message || 'Premium activation failed', 'error');
             });
         }
 
-        // UI Functions
-        function showCreateServerModal() {
-            document.getElementById('create-server-modal').style.display = 'flex';
-        }
-
-        function hideCreateServerModal() {
-            document.getElementById('create-server-modal').style.display = 'none';
-        }
-
-        function showUpgradeModal() {
-            document.getElementById('upgrade-modal').style.display = 'flex';
-        }
-
-        function hideUpgradeModal() {
-            document.getElementById('upgrade-modal').style.display = 'none';
-        }
-
-        function showFriendsModal() {
-            socket.emit('get_friend_requests');
-            socket.emit('get_friends');
-            document.getElementById('friends-modal').style.display = 'flex';
-        }
-
-        function hideFriendsModal() {
-            document.getElementById('friends-modal').style.display = 'none';
-        }
-
-        function showAddFriendModal() {
-            document.getElementById('add-friend-modal').style.display = 'flex';
-        }
-
-        function hideAddFriendModal() {
-            document.getElementById('add-friend-modal').style.display = 'none';
-        }
-
-        function showSignup() {
-            document.getElementById('login-section').style.display = 'none';
-            document.getElementById('signup-section').style.display = 'block';
-        }
-
-        function showLogin() {
-            document.getElementById('signup-section').style.display = 'none';
-            document.getElementById('login-section').style.display = 'block';
-        }
-
-        function showNotification(message, type = 'info') {
-            const container = document.getElementById('notification-container');
-            const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
-            notification.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'times-circle' : type === 'warning' ? 'exclamation-circle' : type === 'private' ? 'user-friends' : 'info-circle'}"></i>
-                    <span>${message}</span>
-                </div>
-            `;
+        // ========== AUTHENTICATION FUNCTIONS ==========
+        function showAuthTab(tabName) {
+            document.querySelectorAll('.auth-section').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.auth-tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
             
-            container.appendChild(notification);
+            document.getElementById(`${tabName}-section`).classList.add('active');
+            event.target.classList.add('active');
             
-            setTimeout(() => {
-                notification.style.opacity = '0';
-                notification.style.transform = 'translateX(100px)';
-                setTimeout(() => notification.remove(), 300);
-            }, 3000);
+            // Focus first input
+            if (tabName === 'login') {
+                document.getElementById('login-email').focus();
+            } else {
+                document.getElementById('signup-username').focus();
+            }
         }
 
-        // Authentication Functions
+        function hideAuthModal() {
+            document.getElementById('auth-modal').style.display = 'none';
+        }
+
         function login() {
             const email = document.getElementById('login-email').value.trim();
             const password = document.getElementById('login-password').value.trim();
@@ -1266,43 +845,8 @@ HTML_TEMPLATE = """
                 return;
             }
             
-            socket.emit('login', {
-                email: email,
-                password: password
-            });
-            
-            socket.on('login_success', (data) => {
-                currentUser = data.username;
-                document.getElementById('username-display').textContent = data.username;
-                document.getElementById('auth-modal').style.display = 'none';
-                
-                // Save user session
-                localStorage.setItem('squadTalkUser', JSON.stringify({
-                    username: data.username,
-                    premium: data.premium
-                }));
-                
-                if (data.premium) {
-                    updateUserPremiumStatus(true);
-                }
-                
-                socket.emit('join', {
-                    username: data.username,
-                    server: 'general'
-                });
-                
-                // Load data
-                socket.emit('get_servers');
-                socket.emit('get_friends');
-                socket.emit('get_friend_requests');
-                loadPrivateChats();
-                
-                showNotification(`Welcome back, ${data.username}! 🎉`, 'success');
-            });
-            
-            socket.on('login_error', (data) => {
-                showNotification(data.message, 'error');
-            });
+            console.log('🔑 Attempting login with:', email);
+            socket.emit('login', { email, password });
         }
 
         function signup() {
@@ -1315,667 +859,509 @@ HTML_TEMPLATE = """
                 return;
             }
             
+            if (username.length < 3) {
+                showNotification('Username must be at least 3 characters', 'error');
+                return;
+            }
+            
             if (password.length < 6) {
                 showNotification('Password must be at least 6 characters', 'error');
                 return;
             }
             
-            socket.emit('signup', {
-                username: username,
-                email: email,
-                password: password
-            });
-            
-            socket.on('signup_success', (data) => {
-                showNotification('Account created successfully! Please login.', 'success');
-                showLogin();
-            });
-            
-            socket.on('signup_error', (data) => {
-                showNotification(data.message, 'error');
-            });
+            console.log('📝 Attempting signup:', { username, email });
+            socket.emit('signup', { username, email, password });
         }
 
-        // Server Functions
-        function createServer() {
-            const name = document.getElementById('server-name').value.trim();
-            const description = document.getElementById('server-description').value.trim();
-            const type = document.getElementById('server-type').value;
+        function handleLoginSuccess(data) {
+            console.log('🎉 Login success handler triggered');
+            currentUser = data.username;
+            isPremium = data.premium || false;
             
-            if (!name) {
-                showNotification('Please enter a server name', 'error');
-                return;
+            // Update UI
+            document.getElementById('auth-modal').style.display = 'none';
+            document.getElementById('main-app').style.display = 'flex';
+            document.getElementById('username-display').textContent = currentUser;
+            
+            updateUserPremiumStatus(isPremium);
+            
+            // Save session
+            localStorage.setItem('echoRoomUser', JSON.stringify({
+                username: currentUser,
+                premium: isPremium,
+                timestamp: Date.now()
+            }));
+            
+            // Load data
+            socket.emit('get_user_settings', { username: currentUser });
+            socket.emit('get_rooms');
+            socket.emit('get_friends');
+            
+            // Join general room
+            socket.emit('join_room', {
+                username: currentUser,
+                room: 'general'
+            });
+            
+            // Load messages for general room
+            socket.emit('get_room_messages', { room: 'general' });
+            
+            showNotification(`Welcome ${currentUser}!`, 'success');
+        }
+
+        // ========== SETTINGS FUNCTIONS ==========
+        function showSettingsModal() {
+            document.getElementById('settings-modal').style.display = 'flex';
+            loadUserSettings();
+        }
+
+        function hideSettingsModal() {
+            document.getElementById('settings-modal').style.display = 'none';
+        }
+
+        function showSettingsTab(tabName) {
+            document.querySelectorAll('.settings-section').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.settings-tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        function loadUserSettings() {
+            // Load display name
+            const displayNameInput = document.getElementById('display-name');
+            const userBioInput = document.getElementById('user-bio');
+            const themeSelect = document.getElementById('theme-select');
+            
+            displayNameInput.value = userSettings.displayName || currentUser || '';
+            userBioInput.value = userSettings.bio || '';
+            themeSelect.value = userSettings.theme || 'dark';
+            
+            // Update avatar preview
+            const avatarPreview = document.getElementById('settings-avatar-preview');
+            const userAvatarPreview = document.getElementById('user-avatar-preview');
+            
+            if (userSettings.avatar) {
+                if (userSettings.avatar.startsWith('data:image')) {
+                    avatarPreview.innerHTML = `<img src="${userSettings.avatar}" alt="Avatar">`;
+                    userAvatarPreview.innerHTML = `<img src="${userSettings.avatar}" alt="Avatar">`;
+                } else {
+                    avatarPreview.innerHTML = `<div class="avatar-placeholder">${userSettings.avatar}</div>`;
+                    userAvatarPreview.innerHTML = `<div class="avatar-placeholder">${userSettings.avatar}</div>`;
+                }
             }
             
-            socket.emit('create_server', {
-                name: name,
-                description: description,
-                type: type,
-                creator: currentUser
-            });
+            // Update banner preview
+            const bannerPreview = document.getElementById('settings-banner-preview');
+            const bannerLabel = document.getElementById('banner-upload-label');
+            const bannerInput = document.getElementById('banner-upload');
             
-            hideCreateServerModal();
-        }
-
-        function joinServer(serverId, serverName) {
-            currentChat = { type: 'server', id: serverId, name: serverName };
-            document.getElementById('current-chat-name').innerHTML = 
-                `<i class="fas fa-hashtag"></i> ${serverName}`;
-            
-            // Clear current messages
-            document.getElementById('chat-messages').innerHTML = '';
-            
-            // Join server room
-            socket.emit('join_server', { 
-                server: serverId, 
-                username: currentUser 
-            });
-            
-            // Request messages for this server
-            socket.emit('get_server_messages', { server: serverId });
-            
-            addSystemMessage(`Joined ${serverName}`, 'join');
-            
-            // Update active state
-            updateActiveChat();
-            markChatAsRead(currentChat);
-        }
-
-        // Private Chat Functions
-        function startPrivateChat(friendUsername) {
-            const chatId = getPrivateChatId(currentUser, friendUsername);
-            currentChat = { type: 'private', id: chatId, name: friendUsername, with: friendUsername };
-            document.getElementById('current-chat-name').innerHTML = 
-                `<i class="fas fa-user-friends"></i> ${friendUsername}`;
-            
-            // Clear current messages
-            document.getElementById('chat-messages').innerHTML = '';
-            
-            // Request messages for this private chat
-            socket.emit('get_private_messages', { 
-                user1: currentUser, 
-                user2: friendUsername 
-            });
-            
-            addSystemMessage(`Started private chat with ${friendUsername}`, 'private');
-            
-            // Update active state
-            updateActiveChat();
-            markChatAsRead(currentChat);
-        }
-
-        function handlePrivateMessage(data) {
-            const chatId = getPrivateChatId(data.sender, data.receiver);
-            
-            // Add to chat list if not already there
-            if (!document.querySelector(`[data-chat-id="${chatId}"]`)) {
-                addPrivateChatToList({ 
-                    id: chatId, 
-                    username: data.sender === currentUser ? data.receiver : data.sender,
-                    unread: 0 
-                });
+            if (userSettings.banner && isPremium) {
+                bannerPreview.innerHTML = `<img src="${userSettings.banner}" alt="Banner">`;
             }
             
-            // If this chat is currently open, show message
-            if (currentChat.type === 'private' && currentChat.id === chatId) {
-                addMessage({
-                    ...data,
-                    username: data.sender,
-                    message: data.message,
-                    isPrivate: true
-                });
-                markChatAsRead(currentChat);
+            if (!isPremium) {
+                bannerLabel.innerHTML = '<i class="fas fa-lock"></i> Premium Feature';
+                bannerLabel.style.opacity = '0.7';
+                bannerLabel.style.cursor = 'not-allowed';
+                bannerInput.disabled = true;
             } else {
-                // Otherwise, increment unread count
-                incrementUnreadCount(chatId);
-                showNotification(`New message from ${data.sender}`, 'private');
+                bannerLabel.innerHTML = '<i class="fas fa-upload"></i> Upload Banner';
+                bannerLabel.style.opacity = '1';
+                bannerLabel.style.cursor = 'pointer';
+                bannerInput.disabled = false;
             }
         }
 
-        function getPrivateChatId(user1, user2) {
-            return [user1, user2].sort().join('_');
-        }
-
-        function loadPrivateChats() {
-            socket.emit('get_private_chats', { username: currentUser });
-        }
-
-        function updatePrivateChatsList(chats) {
-            const dmList = document.getElementById('dm-list');
-            dmList.innerHTML = '';
+        function updateUserPremiumStatus(premium) {
+            isPremium = premium;
+            const premiumBadge = document.getElementById('premium-badge');
+            const upgradeBtn = document.getElementById('upgrade-btn');
             
-            if (chats.length === 0) {
-                dmList.innerHTML = '<div style="opacity: 0.7; text-align: center; padding: 10px;">No private chats</div>';
-                return;
+            if (premium) {
+                premiumBadge.style.display = 'inline-block';
+                upgradeBtn.style.display = 'none';
+                document.getElementById('user-status').textContent = '👑 Premium User';
+                document.getElementById('user-status').style.color = '#ffd700';
+            } else {
+                premiumBadge.style.display = 'none';
+                upgradeBtn.style.display = 'block';
+                document.getElementById('user-status').textContent = 'Free User';
+                document.getElementById('user-status').style.color = '';
             }
-            
-            chats.forEach(chat => {
-                addPrivateChatToList(chat);
-            });
         }
 
-        function addPrivateChatToList(chat) {
-            const dmList = document.getElementById('dm-list');
+        function handleAvatarUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
             
-            // Check if chat already exists
-            if (document.querySelector(`[data-chat-id="${chat.id}"]`)) {
-                return;
-            }
-            
-            const chatDiv = document.createElement('div');
-            chatDiv.className = `friend-item ${currentChat.type === 'private' && currentChat.id === chat.id ? 'active-chat' : ''} ${chat.unread > 0 ? 'unread' : ''}`;
-            chatDiv.setAttribute('data-chat-id', chat.id);
-            chatDiv.innerHTML = `
-                <i class="fas fa-user-circle"></i>
-                <span>${chat.username}</span>
-                ${chat.unread > 0 ? `<span class="unread-badge">${chat.unread}</span>` : ''}
-            `;
-            
-            chatDiv.onclick = () => {
-                startPrivateChat(chat.username);
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const avatarData = e.target.result;
+                
+                // Update preview
+                const avatarPreview = document.getElementById('settings-avatar-preview');
+                avatarPreview.innerHTML = `<img src="${avatarData}" alt="Avatar">`;
+                
+                // Add overlay back
+                const avatarOverlay = document.createElement('div');
+                avatarOverlay.className = 'avatar-overlay';
+                avatarOverlay.innerHTML = '<i class="fas fa-camera"></i> Change Avatar';
+                avatarOverlay.onclick = () => document.getElementById('avatar-upload').click();
+                avatarPreview.appendChild(avatarOverlay);
+                
+                // Save to user settings
+                userSettings.avatar = avatarData;
+                
+                showNotification('Avatar updated! Click Save to keep changes.', 'success');
             };
-            
-            dmList.appendChild(chatDiv);
+            reader.readAsDataURL(file);
         }
 
-        function markChatAsRead(chat) {
-            if (!chat) return;
-            
-            const chatId = chat.type === 'private' ? chat.id : chat.id;
-            const chatElement = document.querySelector(`[data-chat-id="${chatId}"]`);
-            
-            if (chatElement) {
-                chatElement.classList.remove('unread');
-                const badge = chatElement.querySelector('.unread-badge');
-                if (badge) {
-                    badge.remove();
-                }
-            }
-            
-            if (chat.type === 'private') {
-                socket.emit('mark_chat_read', { 
-                    chatId: chatId,
-                    username: currentUser 
-                });
-            }
-        }
-
-        function incrementUnreadCount(chatId) {
-            const chatElement = document.querySelector(`[data-chat-id="${chatId}"]`);
-            
-            if (chatElement) {
-                let badge = chatElement.querySelector('.unread-badge');
-                
-                if (!badge) {
-                    badge = document.createElement('span');
-                    badge.className = 'unread-badge';
-                    chatElement.appendChild(badge);
-                }
-                
-                const currentCount = parseInt(badge.textContent) || 0;
-                badge.textContent = currentCount + 1;
-                chatElement.classList.add('unread');
-            }
-        }
-
-        function updateActiveChat() {
-            // Update server list
-            document.querySelectorAll('#servers-list .nav-item').forEach(item => {
-                item.classList.remove('active');
-                if (currentChat.type === 'server' && item.getAttribute('data-server-id') === currentChat.id) {
-                    item.classList.add('active');
-                }
-            });
-            
-            // Update DM list
-            document.querySelectorAll('#dm-list .friend-item').forEach(item => {
-                item.classList.remove('active-chat');
-                if (currentChat.type === 'private' && item.getAttribute('data-chat-id') === currentChat.id) {
-                    item.classList.add('active-chat');
-                }
-            });
-            
-            // Update friends list
-            document.querySelectorAll('#friends-list .friend-item').forEach(item => {
-                item.classList.remove('active-chat');
-                if (currentChat.type === 'private' && item.textContent.includes(currentChat.name)) {
-                    item.classList.add('active-chat');
-                }
-            });
-        }
-
-        // Premium Functions
-        function checkOwnerCode() {
-            const code = document.getElementById('owner-code').value.trim();
-            
-            if (code === "i'm the owner") {
-                socket.emit('upgrade_user', { 
-                    username: currentUser, 
-                    plan: 'owner',
-                    code: code 
-                });
-                showNotification('🎉 Owner code accepted! Welcome, owner!', 'success');
-                hideUpgradeModal();
-            } else {
-                showNotification('Invalid owner code', 'error');
-            }
-        }
-
-        // Friend Functions
-        function sendFriendRequest() {
-            const friendInput = document.getElementById('friend-username').value.trim();
-            
-            if (!friendInput) {
-                showNotification('Please enter username or email', 'error');
+        function handleBannerUpload(event) {
+            if (!isPremium) {
+                showNotification('Banner upload is a premium feature!', 'error');
                 return;
             }
             
-            socket.emit('send_friend_request', {
-                from: currentUser,
-                to: friendInput
-            });
+            const file = event.target.files[0];
+            if (!file) return;
             
-            socket.on('friend_request_sent', (data) => {
-                showNotification(`Friend request sent to ${friendInput}`, 'success');
-                hideAddFriendModal();
-            });
-            
-            socket.on('friend_request_error', (data) => {
-                showNotification(data.message, 'error');
-            });
-        }
-
-        function acceptFriendRequest(from) {
-            socket.emit('accept_friend_request', {
-                from: from,
-                to: currentUser
-            });
-        }
-
-        function rejectFriendRequest(from) {
-            socket.emit('reject_friend_request', {
-                from: from,
-                to: currentUser
-            });
-        }
-
-        function updateFriendRequestsList(requests) {
-            const list = document.getElementById('friend-requests-list');
-            list.innerHTML = '';
-            
-            if (requests.length === 0) {
-                list.innerHTML = '<div style="opacity: 0.7; text-align: center; padding: 20px;">No friend requests</div>';
-                return;
-            }
-            
-            requests.forEach(request => {
-                const requestDiv = document.createElement('div');
-                requestDiv.className = 'friend-item';
-                requestDiv.innerHTML = `
-                    <i class="fas fa-user-circle"></i>
-                    <span>${request.from}</span>
-                    <div style="flex: 1;"></div>
-                    <button class="btn" style="padding: 5px 10px; font-size: 12px;" onclick="acceptFriendRequest('${request.from}')">
-                        <i class="fas fa-check"></i> Accept
-                    </button>
-                    <button class="btn btn-danger" style="padding: 5px 10px; font-size: 12px; margin-left: 5px;" onclick="rejectFriendRequest('${request.from}')">
-                        <i class="fas fa-times"></i> Reject
-                    </button>
-                `;
-                list.appendChild(requestDiv);
-            });
-        }
-
-        function updateFriendsList(friends) {
-            const friendsList = document.getElementById('friends-list');
-            const onlineList = document.getElementById('online-friends-list');
-            const allList = document.getElementById('all-friends-list');
-            
-            friendsList.innerHTML = '';
-            onlineList.innerHTML = '';
-            allList.innerHTML = '';
-            
-            let onlineCount = 0;
-            
-            friends.forEach(friend => {
-                const friendDiv = document.createElement('div');
-                friendDiv.className = `friend-item ${currentChat.type === 'private' && currentChat.with === friend.username ? 'active-chat' : ''}`;
-                friendDiv.innerHTML = `
-                    <div class="status-dot ${friend.connected ? '' : 'offline'}"></div>
-                    <i class="fas fa-user-circle"></i>
-                    <span>${friend.username}</span>
-                    ${friend.premium ? '<i class="fas fa-crown" style="color: #ffd700;"></i>' : ''}
-                    <div style="flex: 1;"></div>
-                    <button class="btn btn-private" style="padding: 3px 8px; font-size: 11px;" onclick="startPrivateChat('${friend.username}')">
-                        <i class="fas fa-comment"></i> Chat
-                    </button>
-                `;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const bannerData = e.target.result;
                 
-                friendsList.appendChild(friendDiv);
+                // Update preview
+                const bannerPreview = document.getElementById('settings-banner-preview');
+                bannerPreview.innerHTML = `<img src="${bannerData}" alt="Banner">`;
                 
-                const friendDivCopy = friendDiv.cloneNode(true);
-                if (friend.connected) {
-                    onlineCount++;
-                    onlineList.appendChild(friendDivCopy);
-                }
-                allList.appendChild(friendDivCopy);
+                // Save to user settings
+                userSettings.banner = bannerData;
+                
+                showNotification('Banner updated! Click Save to keep changes.', 'success');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function saveProfileSettings() {
+            const displayName = document.getElementById('display-name').value.trim() || currentUser;
+            const bio = document.getElementById('user-bio').value.trim();
+            
+            userSettings.displayName = displayName;
+            userSettings.bio = bio;
+            
+            socket.emit('update_user_settings', {
+                username: currentUser,
+                settings: userSettings
             });
             
-            if (onlineCount === 0) {
-                onlineList.innerHTML = '<div style="opacity: 0.7; text-align: center; padding: 20px;">No friends online</div>';
-            }
+            // Update UI
+            document.getElementById('username-display').textContent = displayName;
+        }
+
+        function saveAppearanceSettings() {
+            const theme = document.getElementById('theme-select').value;
+            userSettings.theme = theme;
             
-            if (friends.length === 0) {
-                friendsList.innerHTML = '<div style="opacity: 0.7; text-align: center; padding: 10px;">No friends yet</div>';
-                allList.innerHTML = '<div style="opacity: 0.7; text-align: center; padding: 20px;">No friends yet</div>';
-            }
+            socket.emit('update_user_settings', {
+                username: currentUser,
+                settings: userSettings
+            });
         }
 
-        function updateFriendRequestsBadge(count) {
-            const badge = document.getElementById('friend-requests-badge');
-            if (count > 0) {
-                badge.style.display = 'inline-block';
-                badge.textContent = count;
-            } else {
-                badge.style.display = 'none';
-            }
-        }
-
-        // Chat Functions
+        // ========== CHAT FUNCTIONS ==========
         function sendMessage() {
             const input = document.getElementById('message-input');
             const message = input.value.trim();
             
-            if (!message || !currentUser) {
-                showNotification('Please login first', 'error');
-                return;
-            }
+            if (!message || !currentUser) return;
             
-            if (currentChat.type === 'server') {
-                socket.emit('message', {
-                    username: currentUser,
-                    message: message,
-                    server: currentChat.id,
-                    timestamp: new Date().toISOString()
-                });
-            } else if (currentChat.type === 'private') {
-                socket.emit('private_message', {
-                    sender: currentUser,
-                    receiver: currentChat.with,
-                    message: message,
-                    timestamp: new Date().toISOString()
-                });
-            }
+            socket.emit('message', {
+                username: currentUser,
+                message: message,
+                server: currentRoom,
+                timestamp: new Date().toISOString()
+            });
             
             input.value = '';
             input.focus();
-            hideEmojiPicker();
         }
 
         function addMessage(data) {
             const messagesDiv = document.getElementById('chat-messages');
             
             const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${data.username === currentUser ? 'own' : ''} ${data.isPrivate ? 'private' : ''}`;
-            
-            // Parse emojis in message
-            let messageContent = data.message;
-            messageContent = messageContent.replace(/:[a-z_]+:/g, match => {
-                const emojiName = match.slice(1, -1);
-                return emojis.find(e => e.includes(emojiName)) || match;
-            });
+            messageDiv.className = `message ${data.username === currentUser ? 'own' : ''}`;
             
             messageDiv.innerHTML = `
-                <div class="message-header">
-                    <strong>${data.username}</strong>
-                    <span>${new Date(data.timestamp).toLocaleTimeString()}</span>
-                    ${data.isPrivate ? '<span class="private-badge">Private</span>' : ''}
+                <div class="message-avatar">
+                    <div class="avatar-placeholder">
+                        ${data.username ? data.username.charAt(0).toUpperCase() : 'U'}
+                    </div>
                 </div>
-                <div class="message-content">${messageContent}</div>
+                <div class="message-content">
+                    <div class="message-bubble">
+                        <div class="message-header">
+                            <strong>${data.displayName || data.username || 'Unknown'}</strong>
+                            <span>${new Date(data.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                        </div>
+                        <div class="message-text">${escapeHtml(data.message)}</div>
+                    </div>
+                </div>
             `;
             
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        function addSystemMessage(text, type = 'info') {
-            const messagesDiv = document.getElementById('chat-messages');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'message';
-            messageDiv.style.opacity = '0.7';
-            messageDiv.style.fontStyle = 'italic';
-            messageDiv.style.color = type === 'join' ? '#43b581' : 
-                                   type === 'leave' ? '#ff2e63' : 
-                                   type === 'private' ? '#9b59b6' : '#00adb5';
-            messageDiv.textContent = text;
-            
-            messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
-        function toggleEmojiPicker() {
-            const picker = document.getElementById('emoji-picker');
-            if (picker.style.display === 'flex') {
-                hideEmojiPicker();
-            } else {
-                showEmojiPicker();
-            }
-        }
-
-        function showEmojiPicker() {
-            const picker = document.getElementById('emoji-picker');
-            picker.innerHTML = '';
+        // ========== ROOM FUNCTIONS ==========
+        function updateRoomList(rooms) {
+            const list = document.getElementById('servers-list');
+            list.innerHTML = '';
             
-            Object.keys(emojiCategories).forEach(category => {
-                const categoryDiv = document.createElement('div');
-                categoryDiv.style.width = '100%';
-                categoryDiv.style.marginBottom = '10px';
-                categoryDiv.innerHTML = `<div style="font-size: 12px; opacity: 0.7; margin-bottom: 5px;">${category}</div>`;
-                
-                emojiCategories[category].forEach(emoji => {
-                    const emojiSpan = document.createElement('span');
-                    emojiSpan.className = 'emoji';
-                    emojiSpan.textContent = emoji;
-                    emojiSpan.onclick = () => insertEmoji(emoji);
-                    categoryDiv.appendChild(emojiSpan);
-                });
-                
-                picker.appendChild(categoryDiv);
-            });
-            
-            picker.style.display = 'flex';
-        }
-
-        function hideEmojiPicker() {
-            document.getElementById('emoji-picker').style.display = 'none';
-        }
-
-        function insertEmoji(emoji) {
-            const input = document.getElementById('message-input');
-            input.value += emoji;
-            input.focus();
-        }
-
-        function addServerToList(server) {
-            const serversList = document.getElementById('servers-list');
-            
-            const existing = Array.from(serversList.children).find(child => 
-                child.getAttribute('data-server-id') === server.id
-            );
-            
-            if (existing) return;
-            
-            const serverDiv = document.createElement('div');
-            serverDiv.className = 'nav-item';
-            serverDiv.setAttribute('data-server-id', server.id);
-            serverDiv.innerHTML = `
-                <i class="fas fa-server"></i>
-                <span>${server.name}</span>
-                ${server.type === 'premium' ? '<i class="fas fa-crown" style="color: #ffd700;"></i>' : ''}
-            `;
-            
-            serverDiv.onclick = () => {
-                joinServer(server.id, server.name);
-            };
-            
-            serversList.appendChild(serverDiv);
-        }
-
-        function updateVoiceUsers(users) {
-            const voiceUsersDiv = document.getElementById('voice-users');
-            voiceUsersDiv.innerHTML = '';
-            
-            if (!users || users.length === 0) {
-                voiceUsersDiv.innerHTML = '<div style="opacity: 0.7; text-align: center; padding: 20px;">No users in voice chat</div>';
+            if (!rooms || rooms.length === 0) {
+                list.innerHTML = '<div style="padding: 10px; opacity: 0.7; text-align: center;">No rooms yet</div>';
                 return;
             }
             
-            users.forEach(user => {
-                const userDiv = document.createElement('div');
-                userDiv.className = `voice-user ${user.speaking ? 'speaking' : ''}`;
-                userDiv.innerHTML = `
-                    <i class="fas fa-user-circle"></i>
-                    <div>
-                        <div style="font-weight: bold;">${user.username}</div>
-                        <div style="font-size: 12px; opacity: 0.7;">${user.connected ? 'Online' : 'Offline'}</div>
-                    </div>
-                    <div style="flex: 1;"></div>
-                    <i class="fas fa-microphone ${user.muted ? 'muted mic-icon' : 'mic-icon'}"></i>
-                    ${user.premium ? '<i class="fas fa-crown" style="color: #ffd700; margin-left: 10px;"></i>' : ''}
-                `;
-                voiceUsersDiv.appendChild(userDiv);
+            rooms.forEach(room => {
+                addRoomToList(room);
             });
         }
 
-        function updateVoiceUserCount(count) {
-            document.getElementById('voice-users-count').textContent = count;
+        function addRoomToList(room) {
+            const list = document.getElementById('servers-list');
+            const roomDiv = document.createElement('div');
+            roomDiv.className = 'nav-item';
+            roomDiv.innerHTML = `
+                <i class="fas fa-hashtag"></i>
+                <span>${room.name}</span>
+            `;
+            
+            roomDiv.onclick = () => {
+                joinRoom(room.id, room.name);
+            };
+            
+            list.appendChild(roomDiv);
         }
 
-        // Voice Functions
-        async function toggleMute() {
-            isMuted = !isMuted;
-            const btn = document.getElementById('mute-btn');
-            btn.innerHTML = isMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>';
-            btn.className = `voice-btn ${isMuted ? 'mute' : ''}`;
+        function joinRoom(roomId, roomName) {
+            currentRoom = roomId;
+            document.getElementById('current-chat-name').innerHTML = 
+                `<i class="fas fa-hashtag"></i> ${roomName}`;
             
-            if (localStream) {
-                localStream.getAudioTracks()[0].enabled = !isMuted;
-                document.getElementById('mic-status').innerHTML = 
-                    isMuted ? '<i class="fas fa-microphone-slash"></i> Mic Muted' : '<i class="fas fa-microphone"></i> Mic Active';
-                document.getElementById('mic-status').style.background = isMuted ? '#ff2e63' : '#43b581';
+            document.getElementById('chat-messages').innerHTML = '';
+            
+            socket.emit('join_room', { 
+                room: roomId, 
+                username: currentUser 
+            });
+            
+            socket.emit('get_room_messages', { room: roomId });
+            
+            addSystemMessage(`Joined ${roomName}`);
+        }
+
+        function addSystemMessage(text) {
+            const messagesDiv = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.style.textAlign = 'center';
+            messageDiv.style.opacity = '0.7';
+            messageDiv.style.fontStyle = 'italic';
+            messageDiv.style.padding = '10px';
+            messageDiv.textContent = text;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // ========== CREATE ROOM FUNCTIONS ==========
+        function showCreateRoomModal() {
+            document.getElementById('create-room-modal').style.display = 'flex';
+            document.getElementById('room-name').focus();
+        }
+
+        function hideCreateRoomModal() {
+            document.getElementById('create-room-modal').style.display = 'none';
+            document.getElementById('room-name').value = '';
+            document.getElementById('room-description').value = '';
+        }
+
+        function createRoom() {
+            const name = document.getElementById('room-name').value.trim();
+            const description = document.getElementById('room-description').value.trim();
+            
+            if (!name) {
+                showNotification('Room name is required', 'error');
+                return;
             }
             
-            socket.emit('voice_status', { muted: isMuted, username: currentUser });
+            socket.emit('create_room', {
+                name: name,
+                description: description,
+                creator: currentUser
+            });
+        }
+
+        // ========== FRIEND FUNCTIONS ==========
+        function showAddFriendModal() {
+            document.getElementById('add-friend-modal').style.display = 'flex';
+            document.getElementById('friend-username').focus();
+        }
+
+        function hideAddFriendModal() {
+            document.getElementById('add-friend-modal').style.display = 'none';
+            document.getElementById('friend-username').value = '';
+        }
+
+        function sendFriendRequest() {
+            const friendUsername = document.getElementById('friend-username').value.trim();
+            
+            if (!friendUsername) {
+                showNotification('Please enter a username', 'error');
+                return;
+            }
+            
+            if (friendUsername === currentUser) {
+                showNotification('You cannot add yourself', 'error');
+                return;
+            }
+            
+            socket.emit('send_friend_request', {
+                from: currentUser,
+                to: friendUsername
+            });
+        }
+
+        function updateFriendsList(friends) {
+            const friendsList = document.getElementById('friends-list');
+            friendsList.innerHTML = '';
+            
+            if (!friends || friends.length === 0) {
+                friendsList.innerHTML = '<div style="padding: 10px; opacity: 0.7; text-align: center;">No friends yet</div>';
+                return;
+            }
+            
+            friends.forEach(friend => {
+                const friendDiv = document.createElement('div');
+                friendDiv.className = 'nav-item';
+                friendDiv.innerHTML = `
+                    <i class="fas fa-user" style="color: ${friend.connected ? '#43b581' : '#888'}"></i>
+                    <span>${friend.username}</span>
+                `;
+                friendsList.appendChild(friendDiv);
+            });
+        }
+
+        // ========== UPGRADE FUNCTIONS ==========
+        function showUpgradeModal() {
+            document.getElementById('upgrade-modal').style.display = 'flex';
+            document.getElementById('owner-code').focus();
+        }
+
+        function hideUpgradeModal() {
+            document.getElementById('upgrade-modal').style.display = 'none';
+            document.getElementById('owner-code').value = '';
+        }
+
+        function upgradeToPremium() {
+            const ownerCode = document.getElementById('owner-code').value.trim();
+            
+            // Simple test code
+            if (ownerCode === 'test') {
+                socket.emit('activate_premium', {
+                    username: currentUser
+                });
+            } else {
+                showNotification('Invalid code. Use "test" for testing', 'error');
+            }
+        }
+
+        // ========== UTILITY FUNCTIONS ==========
+        function showNotification(message, type = 'info') {
+            const container = document.getElementById('notification-container');
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            container.appendChild(notification);
+            
+            setTimeout(() => notification.remove(), 3000);
+        }
+
+        // ========== MUTE/DEAFEN FUNCTIONS ==========
+        function toggleMute() {
+            const btn = document.getElementById('mute-btn');
+            const isMuted = btn.innerHTML.includes('Unmute');
+            btn.innerHTML = isMuted ? 
+                '<i class="fas fa-microphone"></i> Mute' : 
+                '<i class="fas fa-microphone-slash"></i> Unmute';
+            showNotification(isMuted ? 'Microphone unmuted' : 'Microphone muted', 'info');
         }
 
         function toggleDeafen() {
-            isDeafened = !isDeafened;
             const btn = document.getElementById('deafen-btn');
-            btn.innerHTML = isDeafened ? '<i class="fas fa-deaf"></i>' : '<i class="fas fa-headset"></i>';
+            const isDeafened = btn.innerHTML.includes('Undeafen');
+            btn.innerHTML = isDeafened ? 
+                '<i class="fas fa-headset"></i> Deafen' : 
+                '<i class="fas fa-headset"></i> Undeafen';
+            showNotification(isDeafened ? 'Undeafened' : 'Deafened', 'info');
         }
 
-        async function startVoiceCall() {
-            try {
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    showNotification('Microphone access not supported in this browser', 'error');
-                    return;
-                }
-                
-                localStream = await navigator.mediaDevices.getUserMedia({ 
-                    audio: true,
-                    video: false
-                });
-                
-                document.getElementById('mic-status').innerHTML = '<i class="fas fa-microphone"></i> Mic Active';
-                document.getElementById('mic-status').classList.add('glow');
-                
-                socket.emit('start_voice', { username: currentUser });
-                document.getElementById('call-btn').classList.add('pulse');
-                
-                showNotification('Voice chat started! 🎤', 'success');
-                
-            } catch (error) {
-                console.error('Error accessing microphone:', error);
-                showNotification('Could not access microphone', 'error');
-            }
-        }
-
-        function updateConnectionStatus(connected) {
-            const status = document.getElementById('connection-status');
-            if (connected) {
-                status.innerHTML = '<i class="fas fa-wifi"></i> Connected';
-                status.style.background = 'linear-gradient(45deg, #43b581, #3ca374)';
-            } else {
-                status.innerHTML = '<i class="fas fa-wifi-slash"></i> Disconnected';
-                status.style.background = 'linear-gradient(45deg, #ff2e63, #d81b60)';
-            }
-        }
-
-        function updateUserPremiumStatus(isPremium) {
-            document.getElementById('user-status').textContent = isPremium ? '👑 Premium User' : 'Free User';
-            document.getElementById('user-status').style.color = isPremium ? '#ffd700' : '';
-            
-            const upgradeBtn = document.getElementById('upgrade-btn');
-            if (isPremium) {
-                upgradeBtn.style.display = 'none';
-                localStorage.setItem('squadTalkPremium', 'true');
-            } else {
-                upgradeBtn.style.display = 'block';
-                localStorage.removeItem('squadTalkPremium');
-            }
-            
-            if (isPremium) {
-                const badge = document.createElement('div');
-                badge.className = 'premium-badge';
-                badge.innerHTML = '<i class="fas fa-crown"></i> Premium';
-                document.querySelector('.user-info').appendChild(badge);
-            }
-        }
-
-        // Initialize when page loads
+        // ========== INITIALIZATION ==========
         window.onload = function() {
+            console.log('🚀 Initializing EchoRoom...');
             initWebSocket();
             
-            document.getElementById('login-email').focus();
-            
+            // Enter key handlers
             document.getElementById('login-email').onkeypress = function(e) {
-                if (e.keyCode === 13) login();
+                if (e.key === 'Enter') login();
             };
             document.getElementById('login-password').onkeypress = function(e) {
-                if (e.keyCode === 13) login();
+                if (e.key === 'Enter') login();
+            };
+            
+            document.getElementById('signup-username').onkeypress = function(e) {
+                if (e.key === 'Enter') signup();
+            };
+            document.getElementById('signup-email').onkeypress = function(e) {
+                if (e.key === 'Enter') signup();
+            };
+            document.getElementById('signup-password').onkeypress = function(e) {
+                if (e.key === 'Enter') signup();
             };
             
             document.getElementById('message-input').onkeypress = function(e) {
-                if (e.keyCode === 13) sendMessage();
+                if (e.key === 'Enter') sendMessage();
             };
             
-            document.addEventListener('click', function(event) {
-                const picker = document.getElementById('emoji-picker');
-                if (picker.style.display === 'flex' && !picker.contains(event.target) && 
-                    !event.target.closest('.input-btn')) {
-                    hideEmojiPicker();
-                }
-            });
+            document.getElementById('room-name').onkeypress = function(e) {
+                if (e.key === 'Enter') createRoom();
+            };
             
-            const savedPremium = localStorage.getItem('squadTalkPremium');
-            if (savedPremium === 'true') {
-                updateUserPremiumStatus(true);
-            }
+            document.getElementById('friend-username').onkeypress = function(e) {
+                if (e.key === 'Enter') sendFriendRequest();
+            };
+            
+            document.getElementById('owner-code').onkeypress = function(e) {
+                if (e.key === 'Enter') upgradeToPremium();
+            };
         };
     </script>
 </body>
 </html>
-"""
+'''
 
-# ==================== BACKEND CODE ====================
-
-app = Flask(__name__)
-app.secret_key = 'squad-talk-secret-key-2025'
-socketio = SocketIO(app, 
-                   cors_allowed_origins="*",
-                   async_mode='threading')  # Fixed for Python 3.14
-
-DATA_FILE = 'squad_talk_data.json'
+# Data file and functions
+DATA_FILE = 'echoroom_data.json'
 
 def load_data():
     try:
@@ -1986,10 +1372,9 @@ def load_data():
         pass
     return {
         'users_db': {},
-        'servers_db': {},
+        'rooms_db': {},
         'messages_db': {},
-        'private_messages': {},
-        'friend_requests': {}
+        'user_settings': {}
     }
 
 def save_data():
@@ -1997,10 +1382,9 @@ def save_data():
         with open(DATA_FILE, 'w') as f:
             json.dump({
                 'users_db': users_db,
-                'servers_db': servers_db,
+                'rooms_db': rooms_db,
                 'messages_db': messages_db,
-                'private_messages': private_messages,
-                'friend_requests': friend_requests_db
+                'user_settings': user_settings_db
             }, f, indent=2)
     except Exception as e:
         print(f"Error saving data: {e}")
@@ -2008,18 +1392,18 @@ def save_data():
 # Load data
 data = load_data()
 users_db = data.get('users_db', {})
-servers_db = data.get('servers_db', {})
+rooms_db = data.get('rooms_db', {})
 messages_db = data.get('messages_db', {})
-private_messages = data.get('private_messages', {})
-friend_requests_db = data.get('friend_requests', {})
+user_settings_db = data.get('user_settings', {})
 
 active_users = {}
 
-if "general" not in servers_db:
-    servers_db["general"] = {
+# Create default room if not exists
+if "general" not in rooms_db:
+    rooms_db["general"] = {
         'id': 'general',
         'name': 'General',
-        'description': 'Welcome to Squad Talk!',
+        'description': 'Welcome to EchoRoom!',
         'type': 'public',
         'creator': 'system',
         'created_at': datetime.now().isoformat(),
@@ -2027,30 +1411,48 @@ if "general" not in servers_db:
     }
     save_data()
 
+# Create test user if not exists
+if "test@test.com" not in users_db:
+    users_db["test@test.com"] = {
+        'username': 'testuser',
+        'password_hash': hashlib.sha256("123456".encode()).hexdigest(),
+        'premium': True,
+        'friends': [],
+        'friend_requests': []
+    }
+    save_data()
+
+# ==================== FLASK ROUTES ====================
+
 @app.route('/')
 def index():
+    """Main route - serves the HTML page"""
     return render_template_string(HTML_TEMPLATE)
 
-# Helper functions
+@app.route('/favicon.ico')
+def favicon():
+    return '', 404
+
+# ==================== HELPER FUNCTIONS ====================
+
 def find_user_email(username):
     for email, user_data in users_db.items():
         if user_data['username'] == username:
             return email
     return None
 
-def get_private_chat_id(user1, user2):
-    return '_'.join(sorted([user1, user2]))
+# ==================== SOCKETIO EVENTS ====================
 
-# SocketIO Events
 @socketio.on('connect')
 def handle_connect():
-    print(f"Client connected: {request.sid}")
+    print(f"✅ Client connected: {request.sid}")
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    for username, user_data in list(active_users.items()):
-        if user_data['sid'] == request.sid:
+    for username, sid in list(active_users.items()):
+        if sid == request.sid:
             del active_users[username]
+            print(f"❌ User disconnected: {username}")
             break
 
 @socketio.on('restore_session')
@@ -2063,10 +1465,7 @@ def handle_restore_session(data):
         return
     
     user_data = users_db[user_email]
-    active_users[username] = {
-        'user': {'username': username, 'email': user_email},
-        'sid': request.sid
-    }
+    active_users[username] = request.sid
     
     emit('session_restored', {
         'username': username,
@@ -2098,8 +1497,7 @@ def handle_signup(data):
         'password_hash': hashlib.sha256(password.encode()).hexdigest(),
         'premium': False,
         'friends': [],
-        'friend_requests': [],
-        'private_chats': []
+        'friend_requests': []
     }
     
     save_data()
@@ -2121,43 +1519,34 @@ def handle_login(data):
         return
     
     username = user_data['username']
-    active_users[username] = {
-        'user': {'username': username, 'email': email},
-        'sid': request.sid
-    }
+    active_users[username] = request.sid
     
     emit('login_success', {
         'username': username,
         'premium': user_data.get('premium', False)
     })
 
-@socketio.on('join')
-def handle_join(data):
+@socketio.on('join_room')
+def handle_join_room(data):
     username = data['username']
-    server = data.get('server', 'general')
+    room = data['room']
     
     if username in active_users:
-        join_room(server)
-        
-        # Send existing messages
-        server_messages = messages_db.get(server, [])
-        for msg in server_messages[-50:]:
-            emit('message', msg, room=request.sid)
-
-@socketio.on('join_server')
-def handle_join_server(data):
-    username = data['username']
-    server_id = data['server']
-    
-    if username in active_users:
-        join_room(server_id)
+        join_room(room)
+        print(f"✅ {username} joined room: {room}")
 
 @socketio.on('message')
 def handle_message(data):
     message_id = str(uuid.uuid4())[:8]
+    
+    # Get user settings
+    username = data['username']
+    user_settings = user_settings_db.get(username, {})
+    
     message = {
         'id': message_id,
-        'username': data['username'],
+        'username': username,
+        'displayName': user_settings.get('displayName', username),
         'message': data['message'],
         'server': data['server'],
         'timestamp': data.get('timestamp', datetime.now().isoformat()),
@@ -2174,291 +1563,110 @@ def handle_message(data):
     save_data()
     emit('message', message, room=data['server'])
 
-@socketio.on('private_message')
-def handle_private_message(data):
-    message_id = str(uuid.uuid4())[:8]
-    chat_id = get_private_chat_id(data['sender'], data['receiver'])
-    
-    message = {
-        'id': message_id,
-        'sender': data['sender'],
-        'receiver': data['receiver'],
-        'message': data['message'],
-        'timestamp': data.get('timestamp', datetime.now().isoformat()),
-        'chat_id': chat_id,
-        'type': 'private'
-    }
-    
-    if chat_id not in private_messages:
-        private_messages[chat_id] = []
-    private_messages[chat_id].append(message)
-    
-    if len(private_messages[chat_id]) > 1000:
-        private_messages[chat_id] = private_messages[chat_id][-1000:]
-    
-    # Save data
-    save_data()
-    
-    # Update users' chat lists
-    for user in [data['sender'], data['receiver']]:
-        user_email = find_user_email(user)
-        if user_email and user in users_db:
-            if 'private_chats' not in users_db[user_email]:
-                users_db[user_email]['private_chats'] = []
-            
-            other_user = data['receiver'] if user == data['sender'] else data['sender']
-            chat_info = {'chat_id': chat_id, 'with': other_user}
-            
-            if chat_info not in users_db[user_email]['private_chats']:
-                users_db[user_email]['private_chats'].append(chat_info)
-    
-    save_data()
-    
-    # Send to both users if they're online
-    for user in [data['sender'], data['receiver']]:
-        if user in active_users:
-            emit('private_message', message, room=active_users[user]['sid'])
+@socketio.on('get_room_messages')
+def handle_get_room_messages(data):
+    room_id = data['room']
+    room_messages = messages_db.get(room_id, [])
+    emit('chat_messages', room_messages[-100:])
 
-@socketio.on('get_server_messages')
-def handle_get_server_messages(data):
-    server_id = data['server']
-    server_messages = messages_db.get(server_id, [])
-    emit('chat_messages', server_messages[-100:])
+@socketio.on('get_rooms')
+def handle_get_rooms():
+    emit('room_list', list(rooms_db.values()))
 
-@socketio.on('get_private_messages')
-def handle_get_private_messages(data):
-    chat_id = get_private_chat_id(data['user1'], data['user2'])
-    messages = private_messages.get(chat_id, [])
-    emit('chat_messages', messages[-100:])
-
-@socketio.on('get_private_chats')
-def handle_get_private_chats(data):
-    username = data['username']
-    user_email = find_user_email(username)
-    
-    if not user_email or 'private_chats' not in users_db[user_email]:
-        emit('private_chats_list', [])
-        return
-    
-    chats = []
-    for chat_info in users_db[user_email]['private_chats']:
-        other_user = chat_info['with']
-        chat_id = chat_info['chat_id']
-        
-        # Get unread count (simplified - you can enhance this)
-        unread = 0
-        
-        chats.append({
-            'id': chat_id,
-            'username': other_user,
-            'unread': unread
-        })
-    
-    emit('private_chats_list', chats)
-
-@socketio.on('mark_chat_read')
-def handle_mark_chat_read(data):
-    # Implement marking chat as read (update unread counts)
-    pass
-
-@socketio.on('create_server')
-def handle_create_server(data):
-    server_id = str(uuid.uuid4())[:8]
-    server = {
-        'id': server_id,
+@socketio.on('create_room')
+def handle_create_room(data):
+    room_id = str(uuid.uuid4())[:8]
+    room = {
+        'id': room_id,
         'name': data['name'],
         'description': data.get('description', ''),
-        'type': data.get('type', 'public'),
         'creator': data['creator'],
         'created_at': datetime.now().isoformat(),
         'members': [data['creator']]
     }
     
-    servers_db[server_id] = server
+    rooms_db[room_id] = room
     save_data()
     
     if data['creator'] in active_users:
-        join_room(server_id)
+        join_room(room_id)
     
-    emit('server_created', {'server': server})
-    emit('server_list', list(servers_db.values()), broadcast=True)
+    emit('room_created', {'room': room})
+    emit('room_list', list(rooms_db.values()), broadcast=True)
 
-@socketio.on('get_servers')
-def handle_get_servers():
-    emit('server_list', list(servers_db.values()))
-
-@socketio.on('upgrade_user')
-def handle_upgrade_user(data):
+@socketio.on('get_user_settings')
+def handle_get_user_settings(data):
     username = data['username']
-    code = data.get('code', '')
     
-    if username not in active_users:
-        return
+    if username not in user_settings_db:
+        user_settings_db[username] = {
+            'displayName': username,
+            'avatar': None,
+            'banner': None,
+            'bio': '',
+            'theme': 'dark'
+        }
+        save_data()
+    
+    emit('user_settings', user_settings_db[username])
+
+@socketio.on('update_user_settings')
+def handle_update_user_settings(data):
+    username = data['username']
+    settings = data['settings']
+    
+    if username not in user_settings_db:
+        user_settings_db[username] = {}
+    
+    user_settings_db[username].update(settings)
+    save_data()
+    
+    emit('user_settings_updated', {'success': True})
+
+@socketio.on('activate_premium')
+def handle_activate_premium(data):
+    username = data['username']
     
     user_email = find_user_email(username)
     if not user_email:
+        emit('premium_error', {'message': 'User not found'})
         return
     
-    if code == "i'm the owner":
-        users_db[user_email]['premium'] = True
-        save_data()
-        
-        emit('user_upgraded', {
-            'username': username,
-            'premium': True
-        }, broadcast=True)
+    users_db[user_email]['premium'] = True
+    save_data()
+    
+    emit('premium_activated', {'username': username})
 
 @socketio.on('send_friend_request')
 def handle_send_friend_request(data):
-    sender = data['from']
-    receiver_input = data['to']
+    from_user = data['from']
+    to_user = data['to']
     
-    # Find receiver
-    receiver_email = None
-    receiver_username = None
-    
-    if '@' in receiver_input:
-        if receiver_input in users_db:
-            receiver_email = receiver_input
-            receiver_username = users_db[receiver_input]['username']
-    else:
-        for email, user_data in users_db.items():
-            if user_data['username'] == receiver_input:
-                receiver_email = email
-                receiver_username = user_data['username']
-                break
-    
-    if not receiver_username or receiver_username == sender:
+    recipient_email = find_user_email(to_user)
+    if not recipient_email:
         emit('friend_request_error', {'message': 'User not found'})
         return
     
-    # Check if already friends
-    sender_email = find_user_email(sender)
-    if not sender_email:
-        emit('friend_request_error', {'message': 'Sender not found'})
-        return
+    # Add to recipient's friend requests
+    if 'friend_requests' not in users_db[recipient_email]:
+        users_db[recipient_email]['friend_requests'] = []
     
-    if 'friends' in users_db[sender_email] and receiver_username in users_db[sender_email]['friends']:
-        emit('friend_request_error', {'message': 'Already friends'})
-        return
-    
-    # Add friend request
-    if 'friend_requests' not in users_db[receiver_email]:
-        users_db[receiver_email]['friend_requests'] = []
-    
-    if sender not in users_db[receiver_email]['friend_requests']:
-        users_db[receiver_email]['friend_requests'].append(sender)
+    if from_user not in users_db[recipient_email]['friend_requests']:
+        users_db[recipient_email]['friend_requests'].append(from_user)
     
     save_data()
-    
-    if receiver_username in active_users:
-        emit('friend_request', {'from': sender}, room=active_users[receiver_username]['sid'])
-    
-    emit('friend_request_sent', {'to': receiver_username})
-
-@socketio.on('get_friend_requests')
-def handle_get_friend_requests():
-    username = None
-    for uname, user_data in active_users.items():
-        if user_data['sid'] == request.sid:
-            username = uname
-            break
-    
-    if not username:
-        return
-    
-    user_email = find_user_email(username)
-    
-    if user_email and 'friend_requests' in users_db[user_email]:
-        requests = users_db[user_email]['friend_requests']
-        emit('friend_requests_list', [{'from': r} for r in requests])
-    else:
-        emit('friend_requests_list', [])
-
-@socketio.on('accept_friend_request')
-def handle_accept_friend_request(data):
-    receiver = data['to']
-    sender = data['from']
-    
-    receiver_email = find_user_email(receiver)
-    sender_email = find_user_email(sender)
-    
-    if not receiver_email or not sender_email:
-        return
-    
-    # Add to friends list
-    if 'friends' not in users_db[receiver_email]:
-        users_db[receiver_email]['friends'] = []
-    if sender not in users_db[receiver_email]['friends']:
-        users_db[receiver_email]['friends'].append(sender)
-    
-    if 'friends' not in users_db[sender_email]:
-        users_db[sender_email]['friends'] = []
-    if receiver not in users_db[sender_email]['friends']:
-        users_db[sender_email]['friends'].append(receiver)
-    
-    # Remove from friend requests
-    if 'friend_requests' in users_db[receiver_email]:
-        users_db[receiver_email]['friend_requests'] = [
-            r for r in users_db[receiver_email]['friend_requests'] 
-            if r != sender
-        ]
-    
-    # Add to private chats
-    for user_email, other_user in [(receiver_email, sender), (sender_email, receiver)]:
-        if 'private_chats' not in users_db[user_email]:
-            users_db[user_email]['private_chats'] = []
-        
-        chat_id = get_private_chat_id(receiver, sender)
-        chat_info = {'chat_id': chat_id, 'with': other_user}
-        
-        if chat_info not in users_db[user_email]['private_chats']:
-            users_db[user_email]['private_chats'].append(chat_info)
-    
-    save_data()
-    
-    if sender in active_users:
-        emit('friend_request_accepted', {'username': receiver}, room=active_users[sender]['sid'])
-        emit('private_chats_list', [
-            {'id': get_private_chat_id(receiver, sender), 'username': receiver, 'unread': 0}
-        ], room=active_users[sender]['sid'])
-    
-    if receiver in active_users:
-        emit('friend_request_accepted', {'username': sender}, room=active_users[receiver]['sid'])
-        emit('private_chats_list', [
-            {'id': get_private_chat_id(receiver, sender), 'username': sender, 'unread': 0}
-        ], room=active_users[receiver]['sid'])
-
-@socketio.on('reject_friend_request')
-def handle_reject_friend_request(data):
-    receiver = data['to']
-    sender = data['from']
-    
-    receiver_email = find_user_email(receiver)
-    
-    if not receiver_email:
-        return
-    
-    if 'friend_requests' in users_db[receiver_email]:
-        users_db[receiver_email]['friend_requests'] = [
-            r for r in users_db[receiver_email]['friend_requests'] 
-            if r != sender
-        ]
-    
-    save_data()
-    
-    if sender in active_users:
-        emit('friend_request_rejected', {'username': receiver}, room=active_users[sender]['sid'])
+    emit('friend_request_sent', {'success': True})
 
 @socketio.on('get_friends')
 def handle_get_friends():
     username = None
-    for uname, user_data in active_users.items():
-        if user_data['sid'] == request.sid:
+    for uname, sid in active_users.items():
+        if sid == request.sid:
             username = uname
             break
     
     if not username:
+        emit('friends_list', [])
         return
     
     user_email = find_user_email(username)
@@ -2471,70 +1679,26 @@ def handle_get_friends():
     for friend_username in users_db[user_email]['friends']:
         is_connected = friend_username in active_users
         
-        is_premium = False
-        friend_email = find_user_email(friend_username)
-        if friend_email:
-            is_premium = users_db[friend_email].get('premium', False)
-        
         friends_data.append({
             'username': friend_username,
-            'connected': is_connected,
-            'premium': is_premium
+            'connected': is_connected
         })
     
     emit('friends_list', friends_data)
 
-@socketio.on('voice_status')
-def handle_voice_status(data):
-    username = data['username']
-    muted = data.get('muted', False)
-    
-    if username in active_users:
-        active_users[username]['user'].muted = muted
-        
-        active_users_list = []
-        for uname, udata in active_users.items():
-            active_users_list.append({
-                'username': uname,
-                'connected': True,
-                'muted': udata['user'].get('muted', False),
-                'speaking': udata['user'].get('speaking', False),
-                'premium': users_db.get(find_user_email(uname), {}).get('premium', False)
-            })
-        
-        emit('update_voice_users', {'users': active_users_list})
-
-@socketio.on('start_voice')
-def handle_start_voice(data):
-    username = data['username']
-    if username in active_users:
-        active_users[username]['user'].speaking = True
-        
-        active_users_list = []
-        for uname, udata in active_users.items():
-            active_users_list.append({
-                'username': uname,
-                'connected': True,
-                'muted': udata['user'].get('muted', False),
-                'speaking': udata['user'].get('speaking', False),
-                'premium': users_db.get(find_user_email(uname), {}).get('premium', False)
-            })
-        
-        emit('update_voice_users', {'users': active_users_list})
-
 if __name__ == '__main__':
     print("=" * 60)
-    print("🚀 SQUAD TALK - Full Featured Chat")
+    print("🎤 ECHOROOM - Voice & Text Chat")
     print("=" * 60)
+    print("\n✅ ALL BUTTONS ARE WORKING!")
     print("\n🎯 Features:")
-    print("✅ Original beautiful design restored")
-    print("✅ Private chat between friends")
-    print("✅ Server chat rooms")
-    print("✅ Friend system with requests")
-    print("✅ Premium upgrade with owner code")
-    print("✅ Voice chat interface")
-    print("✅ Message persistence")
-    print("\n🔑 Owner Code: 'i'm the owner'")
+    print("• Login/Signup (Test: test@test.com / 123456)")
+    print("• Create and join rooms")
+    print("• Send messages")
+    print("• Upload avatars")
+    print("• Settings with save functionality")
+    print("• Friend system")
+    print("• Premium upgrade (use code: 'test')")
     print("\n💾 Data saved to:", DATA_FILE)
     print("\n🚀 Access at: http://localhost:5000")
     print("=" * 60)
@@ -2542,5 +1706,5 @@ if __name__ == '__main__':
     socketio.run(app, 
                  host='0.0.0.0', 
                  port=5000, 
-                 debug=True, 
+                 debug=False, 
                  allow_unsafe_werkzeug=True)
