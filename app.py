@@ -1,35 +1,17 @@
-
 #!/usr/bin/env python3
 """
-Squad Talk - Discord-like Voice & Text Chat Application
-With Gmail authentication, friend requests, emojis, and owner premium code
+Squad Talk - Full Featured Chat with Private Messages
 """
 
 import uuid
-import re
 import hashlib
-import smtplib
-from email.mime.text import MIMEText
-from datetime import datetime, timedelta
-from dataclasses import dataclass, asdict
-from typing import Dict, List, Optional
-from flask import Flask, render_template_string, request, jsonify, session
-from flask_socketio import SocketIO, emit, join_room, leave_room
+import json
+import os
+from datetime import datetime
+from flask import Flask, render_template_string, request
+from flask_socketio import SocketIO, emit, join_room
 
-# ==================== CONFIGURATION ====================
-OWNER_CODE = "i'm the owner"
-PREMIUM_USERS = {}  # username: expiry_date
-FRIEND_REQUESTS = {}  # receiver: [sender1, sender2]
-
-# Email configuration (for Gmail authentication)
-EMAIL_CONFIG = {
-    'smtp_server': 'smtp.gmail.com',
-    'smtp_port': 587,
-    'sender_email': 'your-app-email@gmail.com',  # Change this
-    'sender_password': 'your-app-password'  # Change this
-}
-
-# ==================== HTML TEMPLATE ====================
+# ==================== ORIGINAL BEAUTIFUL HTML TEMPLATE ====================
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -148,6 +130,16 @@ HTML_TEMPLATE = """
             background: rgba(255,255,255,0.05);
         }
 
+        .friend-item.unread {
+            background: rgba(0, 173, 181, 0.1);
+            border-left: 2px solid #00adb5;
+        }
+
+        .friend-item.active-chat {
+            background: rgba(0, 173, 181, 0.2);
+            border-left: 3px solid #00adb5;
+        }
+
         .status-dot {
             width: 8px;
             height: 8px;
@@ -157,6 +149,15 @@ HTML_TEMPLATE = """
 
         .status-dot.offline {
             background: #747f8d;
+        }
+
+        .unread-badge {
+            background: #ff2e63;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+            margin-left: auto;
         }
 
         /* Main Chat Area */
@@ -216,12 +217,22 @@ HTML_TEMPLATE = """
             max-width: 70%;
             animation: slideIn 0.3s ease;
             border: 1px solid rgba(255,255,255,0.05);
+            position: relative;
         }
 
         .message.own {
             background: rgba(0, 173, 181, 0.2);
             align-self: flex-end;
             border-color: rgba(0, 173, 181, 0.3);
+        }
+
+        .message.private {
+            background: rgba(155, 89, 182, 0.2);
+            border-color: rgba(155, 89, 182, 0.3);
+        }
+
+        .message.private.own {
+            background: rgba(155, 89, 182, 0.3);
         }
 
         .message-header {
@@ -235,6 +246,15 @@ HTML_TEMPLATE = """
         .message-content {
             line-height: 1.6;
             font-size: 15px;
+        }
+
+        .private-badge {
+            background: rgba(155, 89, 182, 0.3);
+            color: #9b59b6;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            margin-left: 10px;
         }
 
         .emoji-picker {
@@ -354,10 +374,6 @@ HTML_TEMPLATE = """
             background: rgba(67,181,129,0.2);
             box-shadow: 0 0 15px rgba(67,181,129,0.3);
             border: 1px solid rgba(67,181,129,0.5);
-        }
-
-        .voice-user.owner {
-            border: 1px solid #ffd700;
         }
 
         .mic-icon {
@@ -524,6 +540,11 @@ HTML_TEMPLATE = """
             color: #333;
         }
 
+        .btn-private {
+            background: linear-gradient(135deg, #9b59b6, #8e44ad);
+            color: white;
+        }
+
         /* Premium Features */
         .premium-features {
             margin-top: 30px;
@@ -614,6 +635,82 @@ HTML_TEMPLATE = """
             border-left-color: #ff9a00;
         }
 
+        .notification.private {
+            border-left-color: #9b59b6;
+        }
+
+        /* Message Options */
+        .message-options {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .message:hover .message-options {
+            opacity: 1;
+        }
+
+        .message-options-btn {
+            background: rgba(0,0,0,0.5);
+            border: none;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .message-options-dropdown {
+            position: absolute;
+            top: 35px;
+            right: 0;
+            background: rgba(40,40,50,0.95);
+            border-radius: 10px;
+            padding: 10px;
+            min-width: 150px;
+            display: none;
+            z-index: 100;
+            border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .message-options-dropdown.show {
+            display: block;
+        }
+
+        .message-option {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .message-option:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .message-option.delete {
+            color: #ff2e63;
+        }
+
+        .message.deleted {
+            opacity: 0.5;
+            font-style: italic;
+        }
+
+        .message.deleted .message-content {
+            color: rgba(255,255,255,0.5);
+        }
+
         /* Responsive */
         @media (max-width: 1200px) {
             .container {
@@ -652,25 +749,25 @@ HTML_TEMPLATE = """
             </div>
 
             <div class="nav-section">
-                <h3>Friends</h3>
+                <h3>Direct Messages</h3>
+                <div id="dm-list" class="friends-list">
+                    <!-- Private chats will appear here -->
+                </div>
                 <div class="nav-item" onclick="showFriendsModal()">
                     <i class="fas fa-user-friends"></i>
                     <span>Friends</span>
                     <span id="friend-requests-badge" class="badge" style="display: none;">0</span>
                 </div>
-                <div class="nav-item" onclick="showAddFriendModal()">
-                    <i class="fas fa-user-plus"></i>
-                    <span>Add Friend</span>
-                </div>
-                <div id="friends-list" class="friends-list">
-                    <!-- Friends will appear here -->
-                </div>
             </div>
 
             <div class="nav-section">
-                <h3>Direct Messages</h3>
-                <div id="dm-list">
-                    <!-- DMs will appear here -->
+                <h3>Friends</h3>
+                <div id="friends-list" class="friends-list">
+                    <!-- Friends will appear here -->
+                </div>
+                <div class="nav-item" onclick="showAddFriendModal()">
+                    <i class="fas fa-user-plus"></i>
+                    <span>Add Friend</span>
                 </div>
             </div>
 
@@ -679,7 +776,7 @@ HTML_TEMPLATE = """
                     <strong id="username-display">Guest</strong>
                     <div id="user-status" style="font-size: 12px; opacity: 0.7;">Free User</div>
                 </div>
-                <button class="btn" onclick="showUpgradeModal()" style="padding: 8px 16px; font-size: 12px;">
+                <button class="btn" onclick="showUpgradeModal()" style="padding: 8px 16px; font-size: 12px;" id="upgrade-btn">
                     <i class="fas fa-crown"></i> Upgrade
                 </button>
             </div>
@@ -688,7 +785,7 @@ HTML_TEMPLATE = """
         <!-- Main Chat Area -->
         <div class="main">
             <div class="chat-header">
-                <h2 id="current-server">
+                <h2 id="current-chat-name">
                     <i class="fas fa-hashtag"></i> General
                 </h2>
                 <div class="user-info">
@@ -809,48 +906,6 @@ HTML_TEMPLATE = """
                     <i class="fas fa-key"></i> Validate Owner Code
                 </button>
             </div>
-
-            <div style="margin-top: 30px;">
-                <h3>Choose Plan</h3>
-                <div style="display: flex; gap: 15px; margin-top: 20px;">
-                    <div style="flex: 1; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 10px;">
-                        <h4>Monthly</h4>
-                        <div style="font-size: 28px; font-weight: bold; color: #00adb5; margin: 15px 0;">$9.99</div>
-                        <button class="btn" onclick="selectPlan('monthly')">
-                            Subscribe Monthly
-                        </button>
-                    </div>
-                    <div style="flex: 1; padding: 20px; background: rgba(255,215,0,0.1); border-radius: 10px; border: 1px solid rgba(255,215,0,0.3);">
-                        <h4 style="color: #ffd700;">Yearly</h4>
-                        <div style="font-size: 28px; font-weight: bold; color: #ffd700; margin: 15px 0;">$99.99</div>
-                        <div style="color: #43b581; font-size: 14px; margin-bottom: 15px;">Save 20%</div>
-                        <button class="btn btn-success" onclick="selectPlan('yearly')">
-                            <i class="fas fa-gem"></i> Subscribe Yearly
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div id="payment-section" style="display: none; margin-top: 30px;">
-                <h3><i class="fas fa-credit-card"></i> Payment Details</h3>
-                <div class="form-group">
-                    <label>Card Number</label>
-                    <input type="text" id="card-number" placeholder="4242 4242 4242 4242">
-                </div>
-                <div style="display: flex; gap: 15px;">
-                    <div class="form-group" style="flex: 1;">
-                        <label>Expiry Date</label>
-                        <input type="text" id="card-expiry" placeholder="MM/YY">
-                    </div>
-                    <div class="form-group" style="flex: 1;">
-                        <label>CVC</label>
-                        <input type="text" id="card-cvc" placeholder="123">
-                    </div>
-                </div>
-                <button class="btn btn-success" onclick="processPayment()">
-                    <i class="fas fa-lock"></i> Complete Subscription
-                </button>
-            </div>
         </div>
     </div>
 
@@ -895,10 +950,6 @@ HTML_TEMPLATE = """
                     <label for="signup-password">Password</label>
                     <input type="password" id="signup-password" placeholder="••••••••">
                 </div>
-                <div class="form-group">
-                    <label for="signup-confirm-password">Confirm Password</label>
-                    <input type="password" id="signup-confirm-password" placeholder="••••••••">
-                </div>
                 <button class="btn btn-success" onclick="signup()">
                     <i class="fas fa-user-plus"></i> Create Account
                 </button>
@@ -908,10 +959,6 @@ HTML_TEMPLATE = """
                     </a>
                 </div>
             </div>
-            
-            <p style="margin-top: 20px; text-align: center; opacity: 0.7; font-size: 12px;">
-                By continuing, you agree to our Terms of Service and Privacy Policy
-            </p>
         </div>
     </div>
 
@@ -968,13 +1015,14 @@ HTML_TEMPLATE = """
         // Global variables
         let socket;
         let currentUser = '';
-        let currentServer = 'general';
+        let currentChat = { type: 'server', id: 'general', name: 'General' };
         let isMuted = false;
         let isDeafened = false;
         let selectedPlan = '';
         let localStream = null;
         let peerConnections = {};
         let emojis = ['😀', '😂', '🤣', '😍', '😎', '😭', '😡', '🥰', '😘', '🤔', '👋', '👍', '👏', '🎉', '🔥', '⭐', '🌟', '💯', '❤️', '💙', '💚', '💛', '💜', '🤑', '🤯', '🥳', '😱', '🤩', '😴', '💀', '👻', '🤖', '👾', '🐱', '🐶', '🦊', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵'];
+        let unreadCounts = {};
         
         // Emoji categories
         const emojiCategories = {
@@ -995,6 +1043,13 @@ HTML_TEMPLATE = """
                 console.log('Connected to server');
                 updateConnectionStatus(true);
                 showNotification('Connected to Squad Talk!', 'success');
+                
+                // If user was logged in, restore session
+                const savedUser = localStorage.getItem('squadTalkUser');
+                if (savedUser) {
+                    const userData = JSON.parse(savedUser);
+                    socket.emit('restore_session', userData);
+                }
             });
 
             socket.on('disconnect', () => {
@@ -1004,19 +1059,34 @@ HTML_TEMPLATE = """
             });
 
             socket.on('message', (data) => {
-                addMessage(data);
+                if (data.type === 'private') {
+                    handlePrivateMessage(data);
+                } else {
+                    // Server message
+                    if (currentChat.type === 'server' && currentChat.id === data.server) {
+                        addMessage(data);
+                    }
+                }
+            });
+
+            socket.on('private_message', (data) => {
+                handlePrivateMessage(data);
             });
 
             socket.on('user_joined', (data) => {
-                addSystemMessage(`${data.username} joined the chat`, 'join');
-                updateVoiceUsers(data.users);
-                updateVoiceUserCount(data.users.length);
+                if (currentChat.type === 'server' && currentChat.id === data.server) {
+                    addSystemMessage(`${data.username} joined the chat`, 'join');
+                    updateVoiceUsers(data.users);
+                    updateVoiceUserCount(data.users.length);
+                }
             });
 
             socket.on('user_left', (data) => {
-                addSystemMessage(`${data.username} left the chat`, 'leave');
-                updateVoiceUsers(data.users);
-                updateVoiceUserCount(data.users.length);
+                if (currentChat.type === 'server' && currentChat.id === data.server) {
+                    addSystemMessage(`${data.username} left the chat`, 'leave');
+                    updateVoiceUsers(data.users);
+                    updateVoiceUserCount(data.users.length);
+                }
             });
 
             socket.on('server_created', (data) => {
@@ -1038,6 +1108,7 @@ HTML_TEMPLATE = """
             socket.on('friend_request_accepted', (data) => {
                 showNotification(`${data.username} accepted your friend request!`, 'success');
                 socket.emit('get_friends');
+                loadPrivateChats();
             });
 
             socket.on('friend_request_rejected', (data) => {
@@ -1048,15 +1119,37 @@ HTML_TEMPLATE = """
                 if (data.username === currentUser) {
                     showNotification('You are now a Premium user! 🎉', 'success');
                     updateUserPremiumStatus(true);
+                    localStorage.setItem('squadTalkUser', JSON.stringify({
+                        username: currentUser,
+                        premium: true
+                    }));
                 }
             });
 
-            socket.on('voice_signal', (data) => {
-                handleVoiceSignal(data);
+            socket.on('session_restored', (data) => {
+                currentUser = data.username;
+                document.getElementById('username-display').textContent = data.username;
+                document.getElementById('auth-modal').style.display = 'none';
+                
+                if (data.premium) {
+                    updateUserPremiumStatus(true);
+                }
+                
+                socket.emit('join', {
+                    username: data.username,
+                    server: 'general'
+                });
+                
+                showNotification(`Welcome back, ${data.username}! 🎉`, 'success');
+                
+                // Load data
+                socket.emit('get_servers');
+                socket.emit('get_friends');
+                socket.emit('get_friend_requests');
+                loadPrivateChats();
             });
 
             // Load existing servers
-            socket.emit('get_servers');
             socket.on('server_list', (servers) => {
                 servers.forEach(server => addServerToList(server));
             });
@@ -1064,11 +1157,37 @@ HTML_TEMPLATE = """
             // Load friend requests
             socket.on('friend_requests_list', (requests) => {
                 updateFriendRequestsList(requests);
+                updateFriendRequestsBadge(requests.length);
             });
 
             // Load friends
             socket.on('friends_list', (friends) => {
                 updateFriendsList(friends);
+            });
+
+            // Load messages for chat
+            socket.on('chat_messages', (messages) => {
+                const messagesDiv = document.getElementById('chat-messages');
+                messagesDiv.innerHTML = '';
+                
+                if (messages && messages.length > 0) {
+                    messages.forEach(msg => {
+                        addMessage(msg);
+                    });
+                } else {
+                    if (currentChat.type === 'server') {
+                        addSystemMessage('Welcome to the server! Start chatting now.', 'info');
+                    } else {
+                        addSystemMessage(`Start a private conversation with ${currentChat.name}!`, 'info');
+                    }
+                }
+                
+                // Mark chat as read
+                markChatAsRead(currentChat);
+            });
+
+            socket.on('private_chats_list', (chats) => {
+                updatePrivateChatsList(chats);
             });
         }
 
@@ -1123,7 +1242,7 @@ HTML_TEMPLATE = """
             notification.className = `notification ${type}`;
             notification.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'times-circle' : type === 'warning' ? 'exclamation-circle' : 'info-circle'}"></i>
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'times-circle' : type === 'warning' ? 'exclamation-circle' : type === 'private' ? 'user-friends' : 'info-circle'}"></i>
                     <span>${message}</span>
                 </div>
             `;
@@ -1147,11 +1266,6 @@ HTML_TEMPLATE = """
                 return;
             }
             
-            if (!validateEmail(email)) {
-                showNotification('Please enter a valid email', 'error');
-                return;
-            }
-            
             socket.emit('login', {
                 email: email,
                 password: password
@@ -1162,14 +1276,26 @@ HTML_TEMPLATE = """
                 document.getElementById('username-display').textContent = data.username;
                 document.getElementById('auth-modal').style.display = 'none';
                 
+                // Save user session
+                localStorage.setItem('squadTalkUser', JSON.stringify({
+                    username: data.username,
+                    premium: data.premium
+                }));
+                
                 if (data.premium) {
                     updateUserPremiumStatus(true);
                 }
                 
                 socket.emit('join', {
                     username: data.username,
-                    server: currentServer
+                    server: 'general'
                 });
+                
+                // Load data
+                socket.emit('get_servers');
+                socket.emit('get_friends');
+                socket.emit('get_friend_requests');
+                loadPrivateChats();
                 
                 showNotification(`Welcome back, ${data.username}! 🎉`, 'success');
             });
@@ -1183,25 +1309,14 @@ HTML_TEMPLATE = """
             const username = document.getElementById('signup-username').value.trim();
             const email = document.getElementById('signup-email').value.trim();
             const password = document.getElementById('signup-password').value.trim();
-            const confirmPassword = document.getElementById('signup-confirm-password').value.trim();
             
-            if (!username || !email || !password || !confirmPassword) {
+            if (!username || !email || !password) {
                 showNotification('Please fill all fields', 'error');
-                return;
-            }
-            
-            if (!validateEmail(email)) {
-                showNotification('Please enter a valid email', 'error');
                 return;
             }
             
             if (password.length < 6) {
                 showNotification('Password must be at least 6 characters', 'error');
-                return;
-            }
-            
-            if (password !== confirmPassword) {
-                showNotification('Passwords do not match', 'error');
                 return;
             }
             
@@ -1219,11 +1334,6 @@ HTML_TEMPLATE = """
             socket.on('signup_error', (data) => {
                 showNotification(data.message, 'error');
             });
-        }
-
-        function validateEmail(email) {
-            const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            return re.test(email);
         }
 
         // Server Functions
@@ -1247,6 +1357,193 @@ HTML_TEMPLATE = """
             hideCreateServerModal();
         }
 
+        function joinServer(serverId, serverName) {
+            currentChat = { type: 'server', id: serverId, name: serverName };
+            document.getElementById('current-chat-name').innerHTML = 
+                `<i class="fas fa-hashtag"></i> ${serverName}`;
+            
+            // Clear current messages
+            document.getElementById('chat-messages').innerHTML = '';
+            
+            // Join server room
+            socket.emit('join_server', { 
+                server: serverId, 
+                username: currentUser 
+            });
+            
+            // Request messages for this server
+            socket.emit('get_server_messages', { server: serverId });
+            
+            addSystemMessage(`Joined ${serverName}`, 'join');
+            
+            // Update active state
+            updateActiveChat();
+            markChatAsRead(currentChat);
+        }
+
+        // Private Chat Functions
+        function startPrivateChat(friendUsername) {
+            const chatId = getPrivateChatId(currentUser, friendUsername);
+            currentChat = { type: 'private', id: chatId, name: friendUsername, with: friendUsername };
+            document.getElementById('current-chat-name').innerHTML = 
+                `<i class="fas fa-user-friends"></i> ${friendUsername}`;
+            
+            // Clear current messages
+            document.getElementById('chat-messages').innerHTML = '';
+            
+            // Request messages for this private chat
+            socket.emit('get_private_messages', { 
+                user1: currentUser, 
+                user2: friendUsername 
+            });
+            
+            addSystemMessage(`Started private chat with ${friendUsername}`, 'private');
+            
+            // Update active state
+            updateActiveChat();
+            markChatAsRead(currentChat);
+        }
+
+        function handlePrivateMessage(data) {
+            const chatId = getPrivateChatId(data.sender, data.receiver);
+            
+            // Add to chat list if not already there
+            if (!document.querySelector(`[data-chat-id="${chatId}"]`)) {
+                addPrivateChatToList({ 
+                    id: chatId, 
+                    username: data.sender === currentUser ? data.receiver : data.sender,
+                    unread: 0 
+                });
+            }
+            
+            // If this chat is currently open, show message
+            if (currentChat.type === 'private' && currentChat.id === chatId) {
+                addMessage({
+                    ...data,
+                    username: data.sender,
+                    message: data.message,
+                    isPrivate: true
+                });
+                markChatAsRead(currentChat);
+            } else {
+                // Otherwise, increment unread count
+                incrementUnreadCount(chatId);
+                showNotification(`New message from ${data.sender}`, 'private');
+            }
+        }
+
+        function getPrivateChatId(user1, user2) {
+            return [user1, user2].sort().join('_');
+        }
+
+        function loadPrivateChats() {
+            socket.emit('get_private_chats', { username: currentUser });
+        }
+
+        function updatePrivateChatsList(chats) {
+            const dmList = document.getElementById('dm-list');
+            dmList.innerHTML = '';
+            
+            if (chats.length === 0) {
+                dmList.innerHTML = '<div style="opacity: 0.7; text-align: center; padding: 10px;">No private chats</div>';
+                return;
+            }
+            
+            chats.forEach(chat => {
+                addPrivateChatToList(chat);
+            });
+        }
+
+        function addPrivateChatToList(chat) {
+            const dmList = document.getElementById('dm-list');
+            
+            // Check if chat already exists
+            if (document.querySelector(`[data-chat-id="${chat.id}"]`)) {
+                return;
+            }
+            
+            const chatDiv = document.createElement('div');
+            chatDiv.className = `friend-item ${currentChat.type === 'private' && currentChat.id === chat.id ? 'active-chat' : ''} ${chat.unread > 0 ? 'unread' : ''}`;
+            chatDiv.setAttribute('data-chat-id', chat.id);
+            chatDiv.innerHTML = `
+                <i class="fas fa-user-circle"></i>
+                <span>${chat.username}</span>
+                ${chat.unread > 0 ? `<span class="unread-badge">${chat.unread}</span>` : ''}
+            `;
+            
+            chatDiv.onclick = () => {
+                startPrivateChat(chat.username);
+            };
+            
+            dmList.appendChild(chatDiv);
+        }
+
+        function markChatAsRead(chat) {
+            if (!chat) return;
+            
+            const chatId = chat.type === 'private' ? chat.id : chat.id;
+            const chatElement = document.querySelector(`[data-chat-id="${chatId}"]`);
+            
+            if (chatElement) {
+                chatElement.classList.remove('unread');
+                const badge = chatElement.querySelector('.unread-badge');
+                if (badge) {
+                    badge.remove();
+                }
+            }
+            
+            if (chat.type === 'private') {
+                socket.emit('mark_chat_read', { 
+                    chatId: chatId,
+                    username: currentUser 
+                });
+            }
+        }
+
+        function incrementUnreadCount(chatId) {
+            const chatElement = document.querySelector(`[data-chat-id="${chatId}"]`);
+            
+            if (chatElement) {
+                let badge = chatElement.querySelector('.unread-badge');
+                
+                if (!badge) {
+                    badge = document.createElement('span');
+                    badge.className = 'unread-badge';
+                    chatElement.appendChild(badge);
+                }
+                
+                const currentCount = parseInt(badge.textContent) || 0;
+                badge.textContent = currentCount + 1;
+                chatElement.classList.add('unread');
+            }
+        }
+
+        function updateActiveChat() {
+            // Update server list
+            document.querySelectorAll('#servers-list .nav-item').forEach(item => {
+                item.classList.remove('active');
+                if (currentChat.type === 'server' && item.getAttribute('data-server-id') === currentChat.id) {
+                    item.classList.add('active');
+                }
+            });
+            
+            // Update DM list
+            document.querySelectorAll('#dm-list .friend-item').forEach(item => {
+                item.classList.remove('active-chat');
+                if (currentChat.type === 'private' && item.getAttribute('data-chat-id') === currentChat.id) {
+                    item.classList.add('active-chat');
+                }
+            });
+            
+            // Update friends list
+            document.querySelectorAll('#friends-list .friend-item').forEach(item => {
+                item.classList.remove('active-chat');
+                if (currentChat.type === 'private' && item.textContent.includes(currentChat.name)) {
+                    item.classList.add('active-chat');
+                }
+            });
+        }
+
         // Premium Functions
         function checkOwnerCode() {
             const code = document.getElementById('owner-code').value.trim();
@@ -1262,33 +1559,6 @@ HTML_TEMPLATE = """
             } else {
                 showNotification('Invalid owner code', 'error');
             }
-        }
-
-        function selectPlan(plan) {
-            selectedPlan = plan;
-            document.getElementById('payment-section').style.display = 'block';
-            document.getElementById('payment-section').scrollIntoView({ behavior: 'smooth' });
-        }
-
-        function processPayment() {
-            const cardNumber = document.getElementById('card-number').value;
-            const expiry = document.getElementById('card-expiry').value;
-            const cvc = document.getElementById('card-cvc').value;
-            
-            if (!cardNumber || !expiry || !cvc) {
-                showNotification('Please fill all payment details', 'error');
-                return;
-            }
-            
-            // Simulate payment processing
-            showNotification('Payment processed successfully! Welcome to Premium! 🎉', 'success');
-            
-            socket.emit('upgrade_user', { 
-                username: currentUser, 
-                plan: selectedPlan 
-            });
-            
-            hideUpgradeModal();
         }
 
         // Friend Functions
@@ -1357,33 +1627,38 @@ HTML_TEMPLATE = """
         }
 
         function updateFriendsList(friends) {
+            const friendsList = document.getElementById('friends-list');
             const onlineList = document.getElementById('online-friends-list');
             const allList = document.getElementById('all-friends-list');
-            const friendsList = document.getElementById('friends-list');
             
+            friendsList.innerHTML = '';
             onlineList.innerHTML = '';
             allList.innerHTML = '';
-            friendsList.innerHTML = '';
             
             let onlineCount = 0;
             
             friends.forEach(friend => {
                 const friendDiv = document.createElement('div');
-                friendDiv.className = 'friend-item';
+                friendDiv.className = `friend-item ${currentChat.type === 'private' && currentChat.with === friend.username ? 'active-chat' : ''}`;
                 friendDiv.innerHTML = `
                     <div class="status-dot ${friend.connected ? '' : 'offline'}"></div>
                     <i class="fas fa-user-circle"></i>
                     <span>${friend.username}</span>
                     ${friend.premium ? '<i class="fas fa-crown" style="color: #ffd700;"></i>' : ''}
+                    <div style="flex: 1;"></div>
+                    <button class="btn btn-private" style="padding: 3px 8px; font-size: 11px;" onclick="startPrivateChat('${friend.username}')">
+                        <i class="fas fa-comment"></i> Chat
+                    </button>
                 `;
                 
+                friendsList.appendChild(friendDiv);
+                
+                const friendDivCopy = friendDiv.cloneNode(true);
                 if (friend.connected) {
                     onlineCount++;
-                    onlineList.appendChild(friendDiv.cloneNode(true));
+                    onlineList.appendChild(friendDivCopy);
                 }
-                
-                allList.appendChild(friendDiv.cloneNode(true));
-                friendsList.appendChild(friendDiv);
+                allList.appendChild(friendDivCopy);
             });
             
             if (onlineCount === 0) {
@@ -1391,15 +1666,19 @@ HTML_TEMPLATE = """
             }
             
             if (friends.length === 0) {
-                allList.innerHTML = '<div style="opacity: 0.7; text-align: center; padding: 20px;">No friends yet</div>';
                 friendsList.innerHTML = '<div style="opacity: 0.7; text-align: center; padding: 10px;">No friends yet</div>';
+                allList.innerHTML = '<div style="opacity: 0.7; text-align: center; padding: 20px;">No friends yet</div>';
             }
         }
 
-        function updateFriendRequestsBadge() {
+        function updateFriendRequestsBadge(count) {
             const badge = document.getElementById('friend-requests-badge');
-            badge.style.display = 'inline-block';
-            // Count will be updated from server
+            if (count > 0) {
+                badge.style.display = 'inline-block';
+                badge.textContent = count;
+            } else {
+                badge.style.display = 'none';
+            }
         }
 
         // Chat Functions
@@ -1412,12 +1691,21 @@ HTML_TEMPLATE = """
                 return;
             }
             
-            socket.emit('message', {
-                username: currentUser,
-                message: message,
-                server: currentServer,
-                timestamp: new Date().toISOString()
-            });
+            if (currentChat.type === 'server') {
+                socket.emit('message', {
+                    username: currentUser,
+                    message: message,
+                    server: currentChat.id,
+                    timestamp: new Date().toISOString()
+                });
+            } else if (currentChat.type === 'private') {
+                socket.emit('private_message', {
+                    sender: currentUser,
+                    receiver: currentChat.with,
+                    message: message,
+                    timestamp: new Date().toISOString()
+                });
+            }
             
             input.value = '';
             input.focus();
@@ -1426,8 +1714,9 @@ HTML_TEMPLATE = """
 
         function addMessage(data) {
             const messagesDiv = document.getElementById('chat-messages');
+            
             const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${data.username === currentUser ? 'own' : ''}`;
+            messageDiv.className = `message ${data.username === currentUser ? 'own' : ''} ${data.isPrivate ? 'private' : ''}`;
             
             // Parse emojis in message
             let messageContent = data.message;
@@ -1440,6 +1729,7 @@ HTML_TEMPLATE = """
                 <div class="message-header">
                     <strong>${data.username}</strong>
                     <span>${new Date(data.timestamp).toLocaleTimeString()}</span>
+                    ${data.isPrivate ? '<span class="private-badge">Private</span>' : ''}
                 </div>
                 <div class="message-content">${messageContent}</div>
             `;
@@ -1454,7 +1744,9 @@ HTML_TEMPLATE = """
             messageDiv.className = 'message';
             messageDiv.style.opacity = '0.7';
             messageDiv.style.fontStyle = 'italic';
-            messageDiv.style.color = type === 'join' ? '#43b581' : type === 'leave' ? '#ff2e63' : '#00adb5';
+            messageDiv.style.color = type === 'join' ? '#43b581' : 
+                                   type === 'leave' ? '#ff2e63' : 
+                                   type === 'private' ? '#9b59b6' : '#00adb5';
             messageDiv.textContent = text;
             
             messagesDiv.appendChild(messageDiv);
@@ -1474,7 +1766,6 @@ HTML_TEMPLATE = """
             const picker = document.getElementById('emoji-picker');
             picker.innerHTML = '';
             
-            // Add category tabs
             Object.keys(emojiCategories).forEach(category => {
                 const categoryDiv = document.createElement('div');
                 categoryDiv.style.width = '100%';
@@ -1507,8 +1798,16 @@ HTML_TEMPLATE = """
 
         function addServerToList(server) {
             const serversList = document.getElementById('servers-list');
+            
+            const existing = Array.from(serversList.children).find(child => 
+                child.getAttribute('data-server-id') === server.id
+            );
+            
+            if (existing) return;
+            
             const serverDiv = document.createElement('div');
             serverDiv.className = 'nav-item';
+            serverDiv.setAttribute('data-server-id', server.id);
             serverDiv.innerHTML = `
                 <i class="fas fa-server"></i>
                 <span>${server.name}</span>
@@ -1516,15 +1815,7 @@ HTML_TEMPLATE = """
             `;
             
             serverDiv.onclick = () => {
-                // Join server logic here
-                currentServer = server.id;
-                document.getElementById('current-server').innerHTML = 
-                    `<i class="fas fa-hashtag"></i> ${server.name}`;
-                socket.emit('join_server', { server: server.id, username: currentUser });
-                
-                // Clear current messages and load server messages
-                document.getElementById('chat-messages').innerHTML = '';
-                addSystemMessage(`Joined ${server.name}`, 'join');
+                joinServer(server.id, server.name);
             };
             
             serversList.appendChild(serverDiv);
@@ -1541,7 +1832,7 @@ HTML_TEMPLATE = """
             
             users.forEach(user => {
                 const userDiv = document.createElement('div');
-                userDiv.className = `voice-user ${user.speaking ? 'speaking' : ''} ${user.owner ? 'owner' : ''}`;
+                userDiv.className = `voice-user ${user.speaking ? 'speaking' : ''}`;
                 userDiv.innerHTML = `
                     <i class="fas fa-user-circle"></i>
                     <div>
@@ -1581,7 +1872,6 @@ HTML_TEMPLATE = """
             isDeafened = !isDeafened;
             const btn = document.getElementById('deafen-btn');
             btn.innerHTML = isDeafened ? '<i class="fas fa-deaf"></i>' : '<i class="fas fa-headset"></i>';
-            // Implement audio mute logic here
         }
 
         async function startVoiceCall() {
@@ -1592,19 +1882,13 @@ HTML_TEMPLATE = """
                 }
                 
                 localStream = await navigator.mediaDevices.getUserMedia({ 
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true
-                    },
+                    audio: true,
                     video: false
                 });
                 
-                // Show mic status
                 document.getElementById('mic-status').innerHTML = '<i class="fas fa-microphone"></i> Mic Active';
                 document.getElementById('mic-status').classList.add('glow');
                 
-                // Start voice chat
                 socket.emit('start_voice', { username: currentUser });
                 document.getElementById('call-btn').classList.add('pulse');
                 
@@ -1612,19 +1896,8 @@ HTML_TEMPLATE = """
                 
             } catch (error) {
                 console.error('Error accessing microphone:', error);
-                if (error.name === 'NotAllowedError') {
-                    showNotification('Microphone access denied. Please allow microphone permissions.', 'error');
-                } else if (error.name === 'NotFoundError') {
-                    showNotification('No microphone found. Please connect a microphone.', 'error');
-                } else {
-                    showNotification('Could not access microphone. Please check permissions.', 'error');
-                }
+                showNotification('Could not access microphone', 'error');
             }
-        }
-
-        function handleVoiceSignal(data) {
-            // WebRTC signaling implementation
-            console.log('Voice signal received:', data);
         }
 
         function updateConnectionStatus(connected) {
@@ -1642,6 +1915,15 @@ HTML_TEMPLATE = """
             document.getElementById('user-status').textContent = isPremium ? '👑 Premium User' : 'Free User';
             document.getElementById('user-status').style.color = isPremium ? '#ffd700' : '';
             
+            const upgradeBtn = document.getElementById('upgrade-btn');
+            if (isPremium) {
+                upgradeBtn.style.display = 'none';
+                localStorage.setItem('squadTalkPremium', 'true');
+            } else {
+                upgradeBtn.style.display = 'block';
+                localStorage.removeItem('squadTalkPremium');
+            }
+            
             if (isPremium) {
                 const badge = document.createElement('div');
                 badge.className = 'premium-badge';
@@ -1654,10 +1936,8 @@ HTML_TEMPLATE = """
         window.onload = function() {
             initWebSocket();
             
-            // Auto-focus login input
             document.getElementById('login-email').focus();
             
-            // Enter key for login
             document.getElementById('login-email').onkeypress = function(e) {
                 if (e.keyCode === 13) login();
             };
@@ -1665,17 +1945,10 @@ HTML_TEMPLATE = """
                 if (e.keyCode === 13) login();
             };
             
-            // Enter key for signup
-            document.getElementById('signup-password').onkeypress = function(e) {
-                if (e.keyCode === 13) signup();
-            };
-            
-            // Enter key for message input
             document.getElementById('message-input').onkeypress = function(e) {
                 if (e.keyCode === 13) sendMessage();
             };
             
-            // Click outside to close emoji picker
             document.addEventListener('click', function(event) {
                 const picker = document.getElementById('emoji-picker');
                 if (picker.style.display === 'flex' && !picker.contains(event.target) && 
@@ -1683,6 +1956,11 @@ HTML_TEMPLATE = """
                     hideEmojiPicker();
                 }
             });
+            
+            const savedPremium = localStorage.getItem('squadTalkPremium');
+            if (savedPremium === 'true') {
+                updateUserPremiumStatus(true);
+            }
         };
     </script>
 </body>
@@ -1695,109 +1973,105 @@ app = Flask(__name__)
 app.secret_key = 'squad-talk-secret-key-2025'
 socketio = SocketIO(app, 
                    cors_allowed_origins="*",
-                   async_mode='threading')  # أضف هذا
+                   async_mode='threading')  # Fixed for Python 3.14
 
-# Database simulation (in production, use a real database)
-users_db = {}  # email: {username, password_hash, premium, friends, friend_requests}
-active_users = {}  # username: {user_object, sid}
-servers_db = {}
-messages_db = {}
-friend_requests_db = {}  # receiver: [sender1, sender2]
+DATA_FILE = 'squad_talk_data.json'
 
-@dataclass
-class User:
-    username: str
-    email: str
-    premium: bool = False
-    premium_expiry: Optional[str] = None
-    connected: bool = False
-    muted: bool = False
-    speaking: bool = False
-    sid: str = ""
-    friends: List[str] = None
-    is_owner: bool = False
-    
-    def __post_init__(self):
-        if self.friends is None:
-            self.friends = []
-
-@dataclass
-class Server:
-    id: str
-    name: str
-    description: str
-    type: str  # public, private, premium
-    creator: str
-    created_at: str
-    members: List[str]
-
-@dataclass
-class Message:
-    id: str
-    username: str
-    message: str
-    server: str
-    timestamp: str
-
-def hash_password(password):
-    """Simple password hashing (in production, use bcrypt)"""
-    return hashlib.sha256(password.encode()).hexdigest()
-
-def verify_password(password, hashed):
-    return hash_password(password) == hashed
-
-def validate_gmail(email):
-    """Validate Gmail address"""
-    pattern = r'^[a-zA-Z0-9._%+-]+@gmail\.com$'
-    return re.match(pattern, email) is not None
-
-def send_verification_email(email, username):
-    """Send verification email (simplified version)"""
+def load_data():
     try:
-        # In production, implement actual email sending
-        print(f"[EMAIL] Verification email sent to {email} for user {username}")
-        return True
-    except Exception as e:
-        print(f"[EMAIL ERROR] {e}")
-        return False
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, 'r') as f:
+                return json.load(f)
+    except:
+        pass
+    return {
+        'users_db': {},
+        'servers_db': {},
+        'messages_db': {},
+        'private_messages': {},
+        'friend_requests': {}
+    }
 
-# Initialize default server
-default_server = Server(
-    id="general",
-    name="General",
-    description="Welcome to Squad Talk! Start chatting here.",
-    type="public",
-    creator="system",
-    created_at=datetime.now().isoformat(),
-    members=[]
-)
-servers_db["general"] = default_server
+def save_data():
+    try:
+        with open(DATA_FILE, 'w') as f:
+            json.dump({
+                'users_db': users_db,
+                'servers_db': servers_db,
+                'messages_db': messages_db,
+                'private_messages': private_messages,
+                'friend_requests': friend_requests_db
+            }, f, indent=2)
+    except Exception as e:
+        print(f"Error saving data: {e}")
+
+# Load data
+data = load_data()
+users_db = data.get('users_db', {})
+servers_db = data.get('servers_db', {})
+messages_db = data.get('messages_db', {})
+private_messages = data.get('private_messages', {})
+friend_requests_db = data.get('friend_requests', {})
+
+active_users = {}
+
+if "general" not in servers_db:
+    servers_db["general"] = {
+        'id': 'general',
+        'name': 'General',
+        'description': 'Welcome to Squad Talk!',
+        'type': 'public',
+        'creator': 'system',
+        'created_at': datetime.now().isoformat(),
+        'members': []
+    }
+    save_data()
 
 @app.route('/')
 def index():
     return render_template_string(HTML_TEMPLATE)
 
+# Helper functions
+def find_user_email(username):
+    for email, user_data in users_db.items():
+        if user_data['username'] == username:
+            return email
+    return None
+
+def get_private_chat_id(user1, user2):
+    return '_'.join(sorted([user1, user2]))
+
+# SocketIO Events
 @socketio.on('connect')
 def handle_connect():
     print(f"Client connected: {request.sid}")
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    disconnected_user = None
-    for username, user_data in active_users.items():
+    for username, user_data in list(active_users.items()):
         if user_data['sid'] == request.sid:
-            user_data['user'].connected = False
-            disconnected_user = username
+            del active_users[username]
             break
+
+@socketio.on('restore_session')
+def handle_restore_session(data):
+    username = data.get('username')
     
-    if disconnected_user:
-        for server in servers_db.values():
-            if disconnected_user in server.members:
-                active_users_list = [asdict(u['user']) for u in active_users.values() if u['user'].connected]
-                socketio.emit('user_left', {
-                    'username': disconnected_user,
-                    'users': active_users_list
-                }, room=server.id)
+    user_email = find_user_email(username)
+    if not user_email:
+        emit('session_error', {'message': 'Session expired'})
+        return
+    
+    user_data = users_db[user_email]
+    active_users[username] = {
+        'user': {'username': username, 'email': user_email},
+        'sid': request.sid
+    }
+    
+    emit('session_restored', {
+        'username': username,
+        'premium': user_data.get('premium', False)
+    })
 
 @socketio.on('signup')
 def handle_signup(data):
@@ -1805,17 +2079,8 @@ def handle_signup(data):
     email = data['email']
     password = data['password']
     
-    # Validation
     if not username or not email or not password:
-        emit('signup_error', {'message': 'All fields are required'})
-        return
-    
-    if not validate_gmail(email):
-        emit('signup_error', {'message': 'Only Gmail addresses are allowed'})
-        return
-    
-    if len(password) < 6:
-        emit('signup_error', {'message': 'Password must be at least 6 characters'})
+        emit('signup_error', {'message': 'All fields required'})
         return
     
     if email in users_db:
@@ -1828,20 +2093,16 @@ def handle_signup(data):
             emit('signup_error', {'message': 'Username already taken'})
             return
     
-    # Create user
     users_db[email] = {
         'username': username,
-        'password_hash': hash_password(password),
+        'password_hash': hashlib.sha256(password.encode()).hexdigest(),
         'premium': False,
-        'premium_expiry': None,
         'friends': [],
         'friend_requests': [],
-        'is_owner': False
+        'private_chats': []
     }
     
-    # Send verification email
-    send_verification_email(email, username)
-    
+    save_data()
     emit('signup_success', {'message': 'Account created successfully'})
 
 @socketio.on('login')
@@ -1849,41 +2110,25 @@ def handle_login(data):
     email = data['email']
     password = data['password']
     
-    if not validate_gmail(email):
-        emit('login_error', {'message': 'Invalid email format'})
-        return
-    
     if email not in users_db:
         emit('login_error', {'message': 'User not found'})
         return
     
     user_data = users_db[email]
     
-    if not verify_password(password, user_data['password_hash']):
-        emit('login_error', {'message': 'Invalid password'})
+    if user_data['password_hash'] != hashlib.sha256(password.encode()).hexdigest():
+        emit('login_error', {'message': 'Wrong password'})
         return
     
     username = user_data['username']
-    
-    # Create or update active user
-    if username in active_users:
-        active_users[username]['sid'] = request.sid
-        active_users[username]['user'].connected = True
-    else:
-        user = User(
-            username=username,
-            email=email,
-            premium=user_data['premium'],
-            connected=True,
-            sid=request.sid,
-            friends=user_data['friends'],
-            is_owner=user_data['is_owner']
-        )
-        active_users[username] = {'user': user, 'sid': request.sid}
+    active_users[username] = {
+        'user': {'username': username, 'email': email},
+        'sid': request.sid
+    }
     
     emit('login_success', {
         'username': username,
-        'premium': user_data['premium']
+        'premium': user_data.get('premium', False)
     })
 
 @socketio.on('join')
@@ -1891,138 +2136,192 @@ def handle_join(data):
     username = data['username']
     server = data.get('server', 'general')
     
-    if username not in active_users:
-        return
+    if username in active_users:
+        join_room(server)
+        
+        # Send existing messages
+        server_messages = messages_db.get(server, [])
+        for msg in server_messages[-50:]:
+            emit('message', msg, room=request.sid)
+
+@socketio.on('join_server')
+def handle_join_server(data):
+    username = data['username']
+    server_id = data['server']
     
-    user = active_users[username]['user']
-    user.connected = True
-    
-    if server not in servers_db:
-        server = 'general'
-    
-    if username not in servers_db[server].members:
-        servers_db[server].members.append(username)
-    
-    join_room(server)
-    
-    # Send existing messages for this server
-    if server in messages_db:
-        for msg in messages_db[server][-50:]:
-            socketio.emit('message', msg, room=request.sid)
-    
-    # Get active users list
-    active_users_list = [asdict(u['user']) for u in active_users.values() if u['user'].connected]
-    
-    socketio.emit('user_joined', {
-        'username': username,
-        'server': server,
-        'users': active_users_list
-    }, room=server)
-    
-    # Send server list to user
-    server_list = [asdict(s) for s in servers_db.values()]
-    emit('server_list', server_list, room=request.sid)
+    if username in active_users:
+        join_room(server_id)
 
 @socketio.on('message')
 def handle_message(data):
     message_id = str(uuid.uuid4())[:8]
-    message = Message(
-        id=message_id,
-        username=data['username'],
-        message=data['message'],
-        server=data['server'],
-        timestamp=data.get('timestamp', datetime.now().isoformat())
-    )
+    message = {
+        'id': message_id,
+        'username': data['username'],
+        'message': data['message'],
+        'server': data['server'],
+        'timestamp': data.get('timestamp', datetime.now().isoformat()),
+        'type': 'server'
+    }
     
     if data['server'] not in messages_db:
         messages_db[data['server']] = []
-    messages_db[data['server']].append(asdict(message))
+    messages_db[data['server']].append(message)
     
-    # Keep only last 100 messages per server
-    if len(messages_db[data['server']]) > 100:
-        messages_db[data['server']] = messages_db[data['server']][-100:]
+    if len(messages_db[data['server']]) > 500:
+        messages_db[data['server']] = messages_db[data['server']][-500:]
     
-    socketio.emit('message', asdict(message), room=data['server'])
+    save_data()
+    emit('message', message, room=data['server'])
+
+@socketio.on('private_message')
+def handle_private_message(data):
+    message_id = str(uuid.uuid4())[:8]
+    chat_id = get_private_chat_id(data['sender'], data['receiver'])
+    
+    message = {
+        'id': message_id,
+        'sender': data['sender'],
+        'receiver': data['receiver'],
+        'message': data['message'],
+        'timestamp': data.get('timestamp', datetime.now().isoformat()),
+        'chat_id': chat_id,
+        'type': 'private'
+    }
+    
+    if chat_id not in private_messages:
+        private_messages[chat_id] = []
+    private_messages[chat_id].append(message)
+    
+    if len(private_messages[chat_id]) > 1000:
+        private_messages[chat_id] = private_messages[chat_id][-1000:]
+    
+    # Save data
+    save_data()
+    
+    # Update users' chat lists
+    for user in [data['sender'], data['receiver']]:
+        user_email = find_user_email(user)
+        if user_email and user in users_db:
+            if 'private_chats' not in users_db[user_email]:
+                users_db[user_email]['private_chats'] = []
+            
+            other_user = data['receiver'] if user == data['sender'] else data['sender']
+            chat_info = {'chat_id': chat_id, 'with': other_user}
+            
+            if chat_info not in users_db[user_email]['private_chats']:
+                users_db[user_email]['private_chats'].append(chat_info)
+    
+    save_data()
+    
+    # Send to both users if they're online
+    for user in [data['sender'], data['receiver']]:
+        if user in active_users:
+            emit('private_message', message, room=active_users[user]['sid'])
+
+@socketio.on('get_server_messages')
+def handle_get_server_messages(data):
+    server_id = data['server']
+    server_messages = messages_db.get(server_id, [])
+    emit('chat_messages', server_messages[-100:])
+
+@socketio.on('get_private_messages')
+def handle_get_private_messages(data):
+    chat_id = get_private_chat_id(data['user1'], data['user2'])
+    messages = private_messages.get(chat_id, [])
+    emit('chat_messages', messages[-100:])
+
+@socketio.on('get_private_chats')
+def handle_get_private_chats(data):
+    username = data['username']
+    user_email = find_user_email(username)
+    
+    if not user_email or 'private_chats' not in users_db[user_email]:
+        emit('private_chats_list', [])
+        return
+    
+    chats = []
+    for chat_info in users_db[user_email]['private_chats']:
+        other_user = chat_info['with']
+        chat_id = chat_info['chat_id']
+        
+        # Get unread count (simplified - you can enhance this)
+        unread = 0
+        
+        chats.append({
+            'id': chat_id,
+            'username': other_user,
+            'unread': unread
+        })
+    
+    emit('private_chats_list', chats)
+
+@socketio.on('mark_chat_read')
+def handle_mark_chat_read(data):
+    # Implement marking chat as read (update unread counts)
+    pass
 
 @socketio.on('create_server')
 def handle_create_server(data):
     server_id = str(uuid.uuid4())[:8]
-    server = Server(
-        id=server_id,
-        name=data['name'],
-        description=data.get('description', ''),
-        type=data['type'],
-        creator=data['creator'],
-        created_at=datetime.now().isoformat(),
-        members=[data['creator']]
-    )
+    server = {
+        'id': server_id,
+        'name': data['name'],
+        'description': data.get('description', ''),
+        'type': data.get('type', 'public'),
+        'creator': data['creator'],
+        'created_at': datetime.now().isoformat(),
+        'members': [data['creator']]
+    }
     
     servers_db[server_id] = server
+    save_data()
     
-    # Join the creator to the new server
     if data['creator'] in active_users:
         join_room(server_id)
     
-    socketio.emit('server_created', {
-        'server': asdict(server),
-        'creator': data['creator']
-    }, broadcast=True)
+    emit('server_created', {'server': server})
+    emit('server_list', list(servers_db.values()), broadcast=True)
+
+@socketio.on('get_servers')
+def handle_get_servers():
+    emit('server_list', list(servers_db.values()))
 
 @socketio.on('upgrade_user')
 def handle_upgrade_user(data):
     username = data['username']
-    plan = data.get('plan', 'monthly')
     code = data.get('code', '')
     
     if username not in active_users:
         return
     
-    user = active_users[username]['user']
+    user_email = find_user_email(username)
+    if not user_email:
+        return
     
-    # Check owner code
-    if code == OWNER_CODE:
-        user.premium = True
-        user.is_owner = True
+    if code == "i'm the owner":
+        users_db[user_email]['premium'] = True
+        save_data()
         
-        # Update database
-        for email, user_data in users_db.items():
-            if user_data['username'] == username:
-                user_data['premium'] = True
-                user_data['is_owner'] = True
-                break
-    else:
-        # Regular premium upgrade
-        user.premium = True
-        expiry_date = datetime.now() + timedelta(days=30 if plan == 'monthly' else 365)
-        
-        # Update database
-        for email, user_data in users_db.items():
-            if user_data['username'] == username:
-                user_data['premium'] = True
-                user_data['premium_expiry'] = expiry_date.isoformat()
-                break
-    
-    socketio.emit('user_upgraded', {
-        'username': username,
-        'premium': True
-    }, broadcast=True)
+        emit('user_upgraded', {
+            'username': username,
+            'premium': True
+        }, broadcast=True)
 
 @socketio.on('send_friend_request')
 def handle_send_friend_request(data):
     sender = data['from']
     receiver_input = data['to']
     
-    # Find receiver by username or email
+    # Find receiver
     receiver_email = None
     receiver_username = None
     
-    # Check if input is email
     if '@' in receiver_input:
         if receiver_input in users_db:
             receiver_email = receiver_input
             receiver_username = users_db[receiver_input]['username']
     else:
-        # Search by username
         for email, user_data in users_db.items():
             if user_data['username'] == receiver_input:
                 receiver_email = email
@@ -2034,40 +2333,31 @@ def handle_send_friend_request(data):
         return
     
     # Check if already friends
-    sender_data = None
-    for email, user_data in users_db.items():
-        if user_data['username'] == sender:
-            sender_data = user_data
-            break
+    sender_email = find_user_email(sender)
+    if not sender_email:
+        emit('friend_request_error', {'message': 'Sender not found'})
+        return
     
-    if receiver_username in sender_data.get('friends', []):
+    if 'friends' in users_db[sender_email] and receiver_username in users_db[sender_email]['friends']:
         emit('friend_request_error', {'message': 'Already friends'})
         return
     
     # Add friend request
-    if receiver_email not in users_db:
-        users_db[receiver_email] = {
-            'username': receiver_username,
-            'password_hash': '',
-            'premium': False,
-            'friends': [],
-            'friend_requests': [sender]
-        }
-    else:
-        if 'friend_requests' not in users_db[receiver_email]:
-            users_db[receiver_email]['friend_requests'] = []
-        
-        if sender not in users_db[receiver_email]['friend_requests']:
-            users_db[receiver_email]['friend_requests'].append(sender)
+    if 'friend_requests' not in users_db[receiver_email]:
+        users_db[receiver_email]['friend_requests'] = []
     
-    # Notify receiver if online
+    if sender not in users_db[receiver_email]['friend_requests']:
+        users_db[receiver_email]['friend_requests'].append(sender)
+    
+    save_data()
+    
     if receiver_username in active_users:
         emit('friend_request', {'from': sender}, room=active_users[receiver_username]['sid'])
     
     emit('friend_request_sent', {'to': receiver_username})
 
 @socketio.on('get_friend_requests')
-def handle_get_friend_requests(data=None):
+def handle_get_friend_requests():
     username = None
     for uname, user_data in active_users.items():
         if user_data['sid'] == request.sid:
@@ -2077,16 +2367,11 @@ def handle_get_friend_requests(data=None):
     if not username:
         return
     
-    # Find user's email
-    user_email = None
-    for email, user_data in users_db.items():
-        if user_data['username'] == username:
-            user_email = email
-            break
+    user_email = find_user_email(username)
     
     if user_email and 'friend_requests' in users_db[user_email]:
         requests = users_db[user_email]['friend_requests']
-        emit('friend_requests_list', requests)
+        emit('friend_requests_list', [{'from': r} for r in requests])
     else:
         emit('friend_requests_list', [])
 
@@ -2095,15 +2380,8 @@ def handle_accept_friend_request(data):
     receiver = data['to']
     sender = data['from']
     
-    # Find emails
-    receiver_email = None
-    sender_email = None
-    
-    for email, user_data in users_db.items():
-        if user_data['username'] == receiver:
-            receiver_email = email
-        if user_data['username'] == sender:
-            sender_email = email
+    receiver_email = find_user_email(receiver)
+    sender_email = find_user_email(sender)
     
     if not receiver_email or not sender_email:
         return
@@ -2126,48 +2404,54 @@ def handle_accept_friend_request(data):
             if r != sender
         ]
     
-    # Update active users
-    if receiver in active_users:
-        active_users[receiver]['user'].friends = users_db[receiver_email]['friends']
+    # Add to private chats
+    for user_email, other_user in [(receiver_email, sender), (sender_email, receiver)]:
+        if 'private_chats' not in users_db[user_email]:
+            users_db[user_email]['private_chats'] = []
+        
+        chat_id = get_private_chat_id(receiver, sender)
+        chat_info = {'chat_id': chat_id, 'with': other_user}
+        
+        if chat_info not in users_db[user_email]['private_chats']:
+            users_db[user_email]['private_chats'].append(chat_info)
     
-    if sender in active_users:
-        active_users[sender]['user'].friends = users_db[sender_email]['friends']
+    save_data()
     
-    # Notify both users
     if sender in active_users:
         emit('friend_request_accepted', {'username': receiver}, room=active_users[sender]['sid'])
+        emit('private_chats_list', [
+            {'id': get_private_chat_id(receiver, sender), 'username': receiver, 'unread': 0}
+        ], room=active_users[sender]['sid'])
     
     if receiver in active_users:
         emit('friend_request_accepted', {'username': sender}, room=active_users[receiver]['sid'])
+        emit('private_chats_list', [
+            {'id': get_private_chat_id(receiver, sender), 'username': sender, 'unread': 0}
+        ], room=active_users[receiver]['sid'])
 
 @socketio.on('reject_friend_request')
 def handle_reject_friend_request(data):
     receiver = data['to']
     sender = data['from']
     
-    # Find receiver email
-    receiver_email = None
-    for email, user_data in users_db.items():
-        if user_data['username'] == receiver:
-            receiver_email = email
-            break
+    receiver_email = find_user_email(receiver)
     
     if not receiver_email:
         return
     
-    # Remove from friend requests
     if 'friend_requests' in users_db[receiver_email]:
         users_db[receiver_email]['friend_requests'] = [
             r for r in users_db[receiver_email]['friend_requests'] 
             if r != sender
         ]
     
-    # Notify sender
+    save_data()
+    
     if sender in active_users:
         emit('friend_request_rejected', {'username': receiver}, room=active_users[sender]['sid'])
 
 @socketio.on('get_friends')
-def handle_get_friends(data=None):
+def handle_get_friends():
     username = None
     for uname, user_data in active_users.items():
         if user_data['sid'] == request.sid:
@@ -2177,12 +2461,7 @@ def handle_get_friends(data=None):
     if not username:
         return
     
-    # Find user's email
-    user_email = None
-    for email, user_data in users_db.items():
-        if user_data['username'] == username:
-            user_email = email
-            break
+    user_email = find_user_email(username)
     
     if not user_email or 'friends' not in users_db[user_email]:
         emit('friends_list', [])
@@ -2190,15 +2469,12 @@ def handle_get_friends(data=None):
     
     friends_data = []
     for friend_username in users_db[user_email]['friends']:
-        # Check if friend is active
-        is_connected = friend_username in active_users and active_users[friend_username]['user'].connected
+        is_connected = friend_username in active_users
         
-        # Get friend's premium status
         is_premium = False
-        for email, user_data in users_db.items():
-            if user_data['username'] == friend_username:
-                is_premium = user_data.get('premium', False)
-                break
+        friend_email = find_user_email(friend_username)
+        if friend_email:
+            is_premium = users_db[friend_email].get('premium', False)
         
         friends_data.append({
             'username': friend_username,
@@ -2216,10 +2492,17 @@ def handle_voice_status(data):
     if username in active_users:
         active_users[username]['user'].muted = muted
         
-        active_users_list = [asdict(u['user']) for u in active_users.values() if u['user'].connected]
-        socketio.emit('update_voice_users', {
-            'users': active_users_list
-        }, broadcast=True)
+        active_users_list = []
+        for uname, udata in active_users.items():
+            active_users_list.append({
+                'username': uname,
+                'connected': True,
+                'muted': udata['user'].get('muted', False),
+                'speaking': udata['user'].get('speaking', False),
+                'premium': users_db.get(find_user_email(uname), {}).get('premium', False)
+            })
+        
+        emit('update_voice_users', {'users': active_users_list})
 
 @socketio.on('start_voice')
 def handle_start_voice(data):
@@ -2227,30 +2510,37 @@ def handle_start_voice(data):
     if username in active_users:
         active_users[username]['user'].speaking = True
         
-        active_users_list = [asdict(u['user']) for u in active_users.values() if u['user'].connected]
-        socketio.emit('update_voice_users', {
-            'users': active_users_list
-        }, broadcast=True)
+        active_users_list = []
+        for uname, udata in active_users.items():
+            active_users_list.append({
+                'username': uname,
+                'connected': True,
+                'muted': udata['user'].get('muted', False),
+                'speaking': udata['user'].get('speaking', False),
+                'premium': users_db.get(find_user_email(uname), {}).get('premium', False)
+            })
+        
+        emit('update_voice_users', {'users': active_users_list})
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("🚀 SQUAD TALK - Voice & Text Chat Application")
+    print("🚀 SQUAD TALK - Full Featured Chat")
     print("=" * 60)
-    print("\n🎯 Features included:")
-    print("✅ Gmail authentication (email: your.email@gmail.com)")
-    print("✅ Password protection")
-    print("✅ Emoji support in chat")
-    print("✅ Working microphone in free mode")
-    print("✅ Friend request system")
-    print("✅ Premium upgrade system")
-    print("✅ Owner code: 'i'm the owner' (grants premium)")
-    print("✅ Voice chat interface with mute controls")
-    print("✅ Multiple server support")
-    print("✅ Real-time notifications")
-    print("\n📧 Note: Only Gmail addresses are accepted for signup")
-    print("\n🔑 Owner Code:", OWNER_CODE)
-    print("   (Enter this in upgrade modal to get premium for free)")
-    print("\n🚀 Access the application at: http://localhost:5000")
+    print("\n🎯 Features:")
+    print("✅ Original beautiful design restored")
+    print("✅ Private chat between friends")
+    print("✅ Server chat rooms")
+    print("✅ Friend system with requests")
+    print("✅ Premium upgrade with owner code")
+    print("✅ Voice chat interface")
+    print("✅ Message persistence")
+    print("\n🔑 Owner Code: 'i'm the owner'")
+    print("\n💾 Data saved to:", DATA_FILE)
+    print("\n🚀 Access at: http://localhost:5000")
     print("=" * 60)
     
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)
+    socketio.run(app, 
+                 host='0.0.0.0', 
+                 port=5000, 
+                 debug=True, 
+                 allow_unsafe_werkzeug=True)
