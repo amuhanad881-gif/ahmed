@@ -118,32 +118,96 @@ def init_db():
 
 def save_user(email, username, password_hash, salt):
     """حفظ مستخدم جديد"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO users (email, username, password_hash, salt, premium)
-        VALUES (%s, %s, %s, %s, %s)
-    ''', (email, username, password_hash, salt, False))
-    conn.commit()
-    conn.close()
+    if not USE_DATABASE:
+        print("⚠️ Using JSON fallback")
+        users_db[email] = {
+            'username': username,
+            'password_hash': password_hash,
+            'salt': salt,
+            'premium': False,
+            'created_at': datetime.now().isoformat()
+        }
+        save_data()
+        print(f"✅ User saved to JSON: {username}")
+        return
+    
+    # استخدم Database
+    try:
+        print(f"🔗 Connecting to database...")
+        conn = get_db()
+        print(f"✅ Database connected")
+        
+        cursor = conn.cursor()
+        print(f"💾 Executing INSERT query...")
+        
+        cursor.execute('''
+            INSERT INTO users (email, username, password_hash, salt, premium)
+            VALUES (%s, %s, %s, %s, %s)
+        ''', (email, username, password_hash, salt, False))
+        
+        conn.commit()
+        print(f"✅ Transaction committed")
+        
+        conn.close()
+        print(f"✅ User saved to database: {username}")
+        
+    except Exception as e:
+        print(f"❌ Database save error: {e}")
+        print(f"Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
+        raise
+
 
 def get_user(email):
     """جلب بيانات مستخدم"""
-    conn = get_db()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    cursor.execute('SELECT * FROM users WHERE email = %s', (email,))
-    user = cursor.fetchone()
-    conn.close()
-    return dict(user) if user else None
+    if not USE_DATABASE:
+        print(f"⚠️ Using JSON fallback for get_user")
+        return users_db.get(email)
+    
+    try:
+        print(f"🔗 Connecting to database for user lookup...")
+        conn = get_db()
+        print(f"✅ Database connected")
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        print(f"🔍 Executing SELECT query for: {email}")
+        
+        cursor.execute('SELECT * FROM users WHERE email = %s', (email,))
+        user = cursor.fetchone()
+        
+        conn.close()
+        print(f"✅ Query result: {'Found' if user else 'Not found'}")
+        
+        return dict(user) if user else None
+        
+    except Exception as e:
+        print(f"❌ Database get error: {e}")
+        print(f"Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
+        return None
+
 
 def get_user_by_username(username):
     """جلب مستخدم بالاسم"""
-    conn = get_db()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    cursor.execute('SELECT * FROM users WHERE username = %s', (username,))
-    user = cursor.fetchone()
-    conn.close()
-    return dict(user) if user else None
+    if not USE_DATABASE:
+        for user_data in users_db.values():
+            if user_data.get('username') == username:
+                return user_data
+        return None
+    
+    try:
+        conn = get_db()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute('SELECT * FROM users WHERE username = %s', (username,))
+        user = cursor.fetchone()
+        conn.close()
+        return dict(user) if user else None
+        
+    except Exception as e:
+        print(f"❌ Username lookup error: {e}")
+        return None
 
 def update_user_premium(email, premium_status):
     """تحديث حالة Premium"""
@@ -166,8 +230,11 @@ app.secret_key = 'echo-room-secret-key-2025'
 # Initialize SocketIO AFTER app
 socketio = SocketIO(app, 
                    cors_allowed_origins="*",
-                   async_mode='threading')
-
+                   async_mode='eventlet',
+                   logger=True,
+                   engineio_logger=True,
+                   ping_timeout=60,
+                   ping_interval=25)
 # Email Configuration (REPLACE WITH REAL CREDENTIALS)
 EMAIL_SENDER = "echoroomteam1@gmail.com"  # Replace with real Gmail
 EMAIL_PASSWORD = "jxsb vfkm zseq zwqq"  # Replace with Gmail App Password
@@ -3856,6 +3923,14 @@ def handle_auto_login(data):
 
 @socketio.on('signup')
 def handle_signup(data):
+    print("=" * 50)
+    print("🔵 SIGNUP REQUEST RECEIVED")
+    print(f"📧 Email: {data.get('email')}")
+    print(f"👤 Username: {data.get('username')}")
+    print(f"🗄️ USE_DATABASE: {USE_DATABASE if 'USE_DATABASE' in globals() else 'Not defined'}")
+    print(f"🔗 DATABASE_URL exists: {bool(DATABASE_URL) if 'DATABASE_URL' in globals() else False}")
+    print("=" * 50)
+    
     username = data.get('username', '').strip()
     email = data.get('email', '').lower().strip()
     password = data.get('password', '')
@@ -3863,31 +3938,62 @@ def handle_signup(data):
     
     # Validation
     if not username or not email or not password:
+        print("❌ Missing fields")
         emit('signup_error', {'message': 'All fields required'})
         return
     
     if not is_valid_gmail(email):
+        print("❌ Invalid Gmail")
         emit('signup_error', {'message': 'Please use a valid Gmail address (@gmail.com)'})
         return
     
     # تحقق من وجود المستخدم في Database
-    existing_user = get_user(email)
-    if existing_user:
-        emit('signup_error', {'message': 'Email already registered'})
+    try:
+        print("🔍 Checking existing user...")
+        existing_user = get_user(email)
+        print(f"🔍 Existing user result: {existing_user}")
+        
+        if existing_user:
+            print("❌ Email already registered")
+            emit('signup_error', {'message': 'Email already registered'})
+            return
+    except Exception as e:
+        print(f"❌ Database check error: {e}")
+        import traceback
+        traceback.print_exc()
+        emit('signup_error', {'message': f'Database error: {str(e)}'})
         return
     
     # تحقق من اسم المستخدم
-    existing_username = get_user_by_username(username)
-    if existing_username:
-        emit('signup_error', {'message': 'Username already taken'})
-        return
+    try:
+        print("🔍 Checking username...")
+        existing_username = get_user_by_username(username)
+        print(f"🔍 Username check result: {existing_username}")
+        
+        if existing_username:
+            print("❌ Username already taken")
+            emit('signup_error', {'message': 'Username already taken'})
+            return
+    except Exception as e:
+        print(f"❌ Username check error: {e}")
+        import traceback
+        traceback.print_exc()
     
     # Hash password
-    hashed_password, salt = hash_password(password)
+    try:
+        print("🔐 Hashing password...")
+        hashed_password, salt = hash_password(password)
+        print("✅ Password hashed")
+    except Exception as e:
+        print(f"❌ Password hash error: {e}")
+        emit('signup_error', {'message': 'Password processing failed'})
+        return
     
     # حفظ في Database
     try:
+        print(f"💾 Saving user to database...")
         save_user(email, username, hashed_password, salt)
+        print(f"✅ User saved successfully!")
         
         # Initialize user data structures (مؤقتاً للأصدقاء)
         friends_db[username] = []
@@ -3901,45 +4007,86 @@ def handle_signup(data):
         }
         
         # Send welcome email
-        send_welcome_email(email, username)
+        try:
+            print("📧 Sending welcome email...")
+            send_welcome_email(email, username)
+            print("✅ Email sent")
+        except Exception as email_error:
+            print(f"⚠️ Email error (non-critical): {email_error}")
         
         emit('signup_success', {
             'message': 'Account created successfully',
             'email': email
         })
         
-        print(f"✅ User registered: {username} ({email})")
+        print(f"✅✅✅ USER REGISTERED SUCCESSFULLY: {username} ({email})")
+        print("=" * 50)
         
     except Exception as e:
-        print(f"❌ Signup error: {e}")
-        emit('signup_error', {'message': 'Registration failed. Please try again.'})
-
+        print(f"❌❌❌ SIGNUP ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        print("=" * 50)
+        emit('signup_error', {'message': f'Registration failed: {str(e)}'})
 
 
 @socketio.on('login')
 def handle_login(data):
+    print("=" * 50)
+    print("🔵 LOGIN REQUEST RECEIVED")
+    print(f"📧 Email: {data.get('email')}")
+    print("=" * 50)
+    
     email = data.get('email', '').lower().strip()
     password = data.get('password', '')
     remember_me = data.get('remember_me', True)
     
-    # جلب المستخدم من Database
-    user_data = get_user(email)
+    if not email or not password:
+        print("❌ Missing credentials")
+        emit('login_error', {'message': 'Please fill all fields'})
+        return
     
-    if not user_data:
-        emit('login_error', {'message': 'Invalid email or password'})
+    # جلب المستخدم من Database
+    try:
+        print("🔍 Fetching user from database...")
+        user_data = get_user(email)
+        print(f"🔍 User data: {user_data}")
+        
+        if not user_data:
+            print("❌ User not found")
+            emit('login_error', {'message': 'Invalid email or password'})
+            return
+    except Exception as e:
+        print(f"❌ Database error: {e}")
+        import traceback
+        traceback.print_exc()
+        emit('login_error', {'message': f'Database error: {str(e)}'})
         return
     
     # Verify password
-    if not verify_password(password, user_data['password_hash'], user_data['salt']):
-        emit('login_error', {'message': 'Invalid email or password'})
+    try:
+        print("🔐 Verifying password...")
+        if not verify_password(password, user_data['password_hash'], user_data['salt']):
+            print("❌ Invalid password")
+            emit('login_error', {'message': 'Invalid email or password'})
+            return
+        print("✅ Password verified")
+    except Exception as e:
+        print(f"❌ Password verification error: {e}")
+        emit('login_error', {'message': 'Login failed'})
         return
     
     username = user_data['username']
     
     # Create session
-    session_token = None
-    if remember_me:
-        session_token = create_session(email)
+    try:
+        session_token = None
+        if remember_me:
+            print("🔑 Creating session...")
+            session_token = create_session(email)
+            print("✅ Session created")
+    except Exception as e:
+        print(f"⚠️ Session creation error: {e}")
     
     # Store session
     socket_sessions[request.sid] = {
@@ -3957,7 +4104,8 @@ def handle_login(data):
         'session_token': session_token
     })
     
-    print(f"✅ User logged in: {username}")
+    print(f"✅✅✅ USER LOGGED IN: {username}")
+    print("=" * 50)
 
 @socketio.on('change_password')
 def handle_change_password(data):
