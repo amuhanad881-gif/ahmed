@@ -5,7 +5,6 @@ FIXED VERSION - No Syntax Errors
 """
 
 import uuid
-import hashlib
 import json
 import os
 import smtplib
@@ -18,6 +17,8 @@ from email.mime.multipart import MIMEMultipart
 from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
+# استيراد نظام الحسابات
+import accounts
 # Initialize Flask app FIRST
 app = Flask(__name__)
 app.secret_key = 'echo-room-secret-key-2025'
@@ -3729,29 +3730,12 @@ def handle_signup(data):
         emit('signup_error', {'message': 'Please use a valid Gmail address (@gmail.com)'})
         return
     
-    # Check if email already exists
-    if email in users_db:
-        emit('signup_error', {'message': 'Email already registered'})
+    # Create account using accounts module
+    success, message, user_data = accounts.create_account(email, username, password)
+    
+    if not success:
+        emit('signup_error', {'message': message})
         return
-    
-    # Check if username already exists
-    for user_data in users_db.values():
-        if user_data.get('username') == username:
-            emit('signup_error', {'message': 'Username already taken'})
-            return
-    
-    # Hash password
-    hashed_password, salt = hash_password(password)
-    
-    # Create user
-    users_db[email] = {
-        'username': username,
-        'password_hash': hashed_password,
-        'salt': salt,
-        'premium': False,
-        'created_at': datetime.now().isoformat(),
-        'verified': False
-    }
     
     # Initialize user data structures
     friends_db[username] = []
@@ -3767,7 +3751,8 @@ def handle_signup(data):
     # Create session if remember me is enabled
     session_token = None
     if remember_me:
-        session_token = create_session(email)
+        session_token = generate_session_token()
+        accounts.create_session(email, session_token)
     
     save_data()
     
@@ -3786,15 +3771,11 @@ def handle_login(data):
     password = data.get('password', '')
     remember_me = data.get('remember_me', True)
     
-    if email not in users_db:
-        emit('login_error', {'message': 'Invalid email or password'})
-        return
+    # Authenticate using accounts module
+    success, message, user_data = accounts.authenticate_user(email, password)
     
-    user_data = users_db[email]
-    
-    # Verify password
-    if not verify_password(password, user_data['password_hash'], user_data['salt']):
-        emit('login_error', {'message': 'Invalid email or password'})
+    if not success:
+        emit('login_error', {'message': message})
         return
     
     username = user_data['username']
@@ -3802,7 +3783,8 @@ def handle_login(data):
     # Create session
     session_token = None
     if remember_me:
-        session_token = create_session(email)
+        session_token = generate_session_token()
+        accounts.create_session(email, session_token)
     
     # Store session
     socket_sessions[request.sid] = {
