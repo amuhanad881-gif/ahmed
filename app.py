@@ -1046,7 +1046,7 @@ HTML_TEMPLATE = '''
 
             <div class="form-group">
                 <label for="upgrade-code">Monthly Upgrade Code</label>
-                <input type="text" id="upgrade-code" placeholder="Enter upgrade code (use 'test' for demo)">
+                <input type="text" id="upgrade-code" placeholder="Enter upgrade code (use 'your own code' for demo)">
             </div>
 
             <button class="btn btn-premium" onclick="upgradeAccount()">
@@ -3282,3 +3282,4 @@ if __name__ == '__main__':
                  port=5000, 
                  debug=False, 
                  allow_unsafe_werkzeug=True)
+
