@@ -18,12 +18,21 @@ from email.mime.multipart import MIMEMultipart
 from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
+# في أول الملف بعد imports
+USE_DATABASE = True  # نفترض إننا بنستخدم Database دايماً
 # ============ DATABASE CONNECTION ============
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
-
+if not DATABASE_URL:
+    print("⚠️ WARNING: DATABASE_URL not set!")
+    print("⚠️ Using JSON fallback mode")
+    USE_DATABASE = False
+else:
+    print(f"✅ DATABASE_URL found: {DATABASE_URL[:50]}...")
+    USE_DATABASE = True
+    
 def get_db():
     """الاتصال بقاعدة البيانات"""
     conn = psycopg2.connect(DATABASE_URL, sslmode='require')
@@ -5369,37 +5378,46 @@ def handle_end_call(data):
         'room_id': room_id
     }, room=room_id)
 
+# في النهاية - استبدل كل شيء من if __name__ == '__main__':
+
+# في النهاية - استبدل كل شيء من if __name__ == '__main__':
+
 if __name__ == '__main__':
     print("=" * 60)
-    print("🎤 ECHOROOM - SECURE VERSION (FIXED)")
-    try:
-        init_db()
-        print("✅ Database initialized successfully")
-    except Exception as e:
-        print(f"❌ Database error: {e}")
-        print("⚠️  Make sure DATABASE_URL is set in environment variables")
+    print("🎤 ECHOROOM - DATABASE VERSION")
     print("=" * 60)
-    print("\n✅ ALL ISSUES FIXED:")
-    print("- Persistent user accounts (saved to echoroom_data.json)")
-    print("- Friend requests work correctly")
-    print("- Private chat (DM) messages now send and receive properly")
-    print("- Auto-login works with 'Remember me'")
-    print("- All data persists between sessions")
-    print("\n✅ DEBUG FEATURES:")
-    print("- Console logs for all private messages")
-    print("- Error messages for debugging")
-    print("- Consistent room IDs for private chats")
-    print("\n🔧 SETUP REQUIRED:")
-    print("1. Set EMAIL_SENDER and EMAIL_PASSWORD for Gmail")
-    print("2. Enable Gmail App Password")
-    print("3. Run: python app.py")
-    print("\n🔑 PREMIUM SECRET CODE: 'The Goat'")
-    print("\n🚀 Access: http://localhost:5000")
+    
+    # عرض Environment Variables
+    print("\n📊 Environment Check:")
+    print(f"   DATABASE_URL: {'Set ✅' if DATABASE_URL else 'Not set ❌'}")
+    print(f"   USE_DATABASE: {USE_DATABASE}")
+    print(f"   EMAIL_SENDER: {EMAIL_SENDER}")
+    
+    # إنشاء الجداول
+    if USE_DATABASE:
+        try:
+            print("\n🔵 Initializing database...")
+            init_db()
+            print("✅ Database initialized successfully")
+        except Exception as e:
+            print(f"❌ Database error: {e}")
+            import traceback
+            traceback.print_exc()
+            print("⚠️  Falling back to JSON mode")
+            USE_DATABASE = False
+    else:
+        print("\n⚠️ Running in JSON mode (no database)")
+    
+    # احصل على PORT من Railway
+    port = int(os.environ.get("PORT", 5000))
+    
+    print(f"\n🚀 Starting server...")
+    print(f"   Host: 0.0.0.0")
+    print(f"   Port: {port}")
     print("=" * 60)
     
     socketio.run(app, 
-             host='0.0.0.0', 
-             port=port,
-             debug=False,
-             log_output=True)
-
+                 host='0.0.0.0', 
+                 port=port,
+                 debug=False,
+                 log_output=True)
