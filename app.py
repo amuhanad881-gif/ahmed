@@ -604,6 +604,37 @@ HTML_TEMPLATE = '''
             background: rgba(255, 46, 99, 0.2);
             color: #ff2e63;
         }
+        .room-type-badge.dm {
+            background: rgba(67, 181, 129, 0.2);
+            color: #43b581;
+        }
+        
+        /* NEW: Friend chat buttons */
+        .friend-chat-btn {
+            background: transparent;
+            border: none;
+            color: #00e5ff;
+            cursor: pointer;
+            font-size: 14px;
+            margin-left: 5px;
+            padding: 2px 8px;
+            border-radius: 5px;
+            transition: all 0.3s;
+        }
+        .friend-chat-btn:hover {
+            background: rgba(0, 229, 255, 0.1);
+        }
+        
+        /* NEW: Add friend to room modal */
+        .friend-room-select {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -750,6 +781,9 @@ HTML_TEMPLATE = '''
                 <div class="room-header-actions" id="room-header-actions" style="display: none;">
                     <button class="action-btn" onclick="showInviteModal()" id="invite-btn">
                         <i class="fas fa-link"></i> Invite
+                    </button>
+                    <button class="action-btn" onclick="showAddFriendToRoomModal()" id="add-friend-to-room-btn">
+                        <i class="fas fa-user-plus"></i> Add Friend
                     </button>
                     <button class="action-btn" onclick="leaveRoom()" id="leave-room-btn">
                         <i class="fas fa-sign-out-alt"></i> Leave
@@ -969,1358 +1003,1613 @@ HTML_TEMPLATE = '''
 
             <div class="form-group">
                 <label for="friend-username">Username</label>
-                    <input type="text" id="friend-username" placeholder="Enter username">
-                </div>
-
-                <button class="btn btn-success" onclick="sendFriendRequest()">
-                    <i class="fas fa-user-plus"></i> Send Friend Request
-                </button>
+                <input type="text" id="friend-username" placeholder="Enter username">
             </div>
+
+            <button class="btn btn-success" onclick="sendFriendRequest()">
+                <i class="fas fa-user-plus"></i> Send Friend Request
+            </button>
         </div>
+    </div>
 
-        <div class="modal" id="friend-requests-modal">
-            <div class="settings-modal-content">
-                <button class="close-btn" onclick="hideFriendRequestsModal()">
-                    <i class="fas fa-times"></i>
-                </button>
-                
-                <div class="settings-header">
-                    <h2><i class="fas fa-user-clock"></i> Friend Requests</h2>
-                </div>
-
-                <div id="friend-requests-list" style="max-height: 300px; overflow-y: auto;"></div>
+    <div class="modal" id="friend-requests-modal">
+        <div class="settings-modal-content">
+            <button class="close-btn" onclick="hideFriendRequestsModal()">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div class="settings-header">
+                <h2><i class="fas fa-user-clock"></i> Friend Requests</h2>
             </div>
+
+            <div id="friend-requests-list" style="max-height: 300px; overflow-y: auto;"></div>
         </div>
+    </div>
 
-        <div class="modal" id="invite-modal">
-            <div class="settings-modal-content" style="max-width: 500px;">
-                <button class="close-btn" onclick="hideInviteModal()">
-                    <i class="fas fa-times"></i>
-                </button>
-                
-                <div class="settings-header">
-                    <h2><i class="fas fa-link"></i> Invite Friends</h2>
-                </div>
-
-                <p>Share this link with your friends:</p>
-                
-                <div class="invite-link-box" id="invite-link">
-                    Loading...
-                </div>
-
-                <button class="btn" onclick="copyInviteLink()">
-                    <i class="fas fa-copy"></i> Copy Link
-                </button>
+    <div class="modal" id="invite-modal">
+        <div class="settings-modal-content" style="max-width: 500px;">
+            <button class="close-btn" onclick="hideInviteModal()">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div class="settings-header">
+                <h2><i class="fas fa-link"></i> Invite Friends</h2>
             </div>
-        </div>
 
-        <div class="modal" id="upgrade-modal">
-            <div class="settings-modal-content">
-                <button class="close-btn" onclick="hideUpgradeModal()">
-                    <i class="fas fa-times"></i>
-                </button>
-                
-                <div class="settings-header">
-                    <h2><i class="fas fa-crown"></i> Upgrade to Premium</h2>
-                    <p>Unlock exclusive features with monthly subscription</p>
-                </div>
-
-                <div style="text-align: center; margin-bottom: 30px;">
-                    <div style="font-size: 48px; color: #ffd700; margin-bottom: 20px;">
-                        <i class="fas fa-crown"></i>
-                    </div>
-                    <h3 style="color: #ffd700; margin-bottom: 20px;">Premium Features</h3>
-                    <ul style="text-align: left; margin-bottom: 30px; padding-left: 20px;">
-                        <li style="margin-bottom: 10px;">Custom profile banner</li>
-                        <li style="margin-bottom: 10px;">HD avatar uploads</li>
-                        <li style="margin-bottom: 10px;">Special badge on profile</li>
-                        <li style="margin-bottom: 10px;">Create unlimited rooms</li>
-                        <li style="margin-bottom: 10px;">Priority support</li>
-                    </ul>
-                </div>
-
-                <div class="form-group">
-                    <label for="upgrade-code">Enter Secret Code</label>
-                    <input type="password" id="upgrade-code" placeholder="Enter secret code">
-                </div>
-
-                <button class="btn btn-premium" onclick="upgradeAccount()">
-                    <i class="fas fa-crown"></i> Activate Premium
-                </button>
+            <p>Share this link with your friends:</p>
+            
+            <div class="invite-link-box" id="invite-link">
+                Loading...
             </div>
+
+            <button class="btn" onclick="copyInviteLink()">
+                <i class="fas fa-copy"></i> Copy Link
+            </button>
         </div>
+    </div>
 
-        <div id="notification-container"></div>
+    <!-- NEW: Add Friend to Room Modal -->
+    <div class="modal" id="add-friend-to-room-modal">
+        <div class="settings-modal-content" style="max-width: 500px;">
+            <button class="close-btn" onclick="hideAddFriendToRoomModal()">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div class="settings-header">
+                <h2><i class="fas fa-user-plus"></i> Add Friend to Room</h2>
+            </div>
 
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.min.js"></script>
-        <script>
-            let socket;
-            let currentUser = '';
-            let currentUserEmail = '';
-            let isPremium = false;
-            let currentRoom = 'general';
-            let currentRoomData = null;
-            let userSettings = {};
-            let friendRequests = [];
-            let inCall = false;
-            let isRoomCreator = false;
-            let sessionToken = '';
+            <div class="form-group">
+                <label for="room-friend-select">Select Friend to Add</label>
+                <select id="room-friend-select" class="friend-room-select">
+                    <option value="">Select a friend...</option>
+                </select>
+            </div>
 
-            // Initialize WebSocket
-            function initWebSocket() {
-                socket = io();
+            <button class="btn btn-success" onclick="addFriendToRoom()">
+                <i class="fas fa-user-plus"></i> Add to Room
+            </button>
+        </div>
+    </div>
+
+    <div class="modal" id="upgrade-modal">
+        <div class="settings-modal-content">
+            <button class="close-btn" onclick="hideUpgradeModal()">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div class="settings-header">
+                <h2><i class="fas fa-crown"></i> Upgrade to Premium</h2>
+                <p>Unlock exclusive features with monthly subscription</p>
+            </div>
+
+            <div style="text-align: center; margin-bottom: 30px;">
+                <div style="font-size: 48px; color: #ffd700; margin-bottom: 20px;">
+                    <i class="fas fa-crown"></i>
+                </div>
+                <h3 style="color: #ffd700; margin-bottom: 20px;">Premium Features</h3>
+                <ul style="text-align: left; margin-bottom: 30px; padding-left: 20px;">
+                    <li style="margin-bottom: 10px;">Custom profile banner</li>
+                    <li style="margin-bottom: 10px;">HD avatar uploads</li>
+                    <li style="margin-bottom: 10px;">Special badge on profile</li>
+                    <li style="margin-bottom: 10px;">Create unlimited rooms</li>
+                    <li style="margin-bottom: 10px;">Priority support</li>
+                </ul>
+            </div>
+
+            <div class="form-group">
+                <label for="upgrade-code">Enter Secret Code</label>
+                <input type="password" id="upgrade-code" placeholder="Enter secret code">
+            </div>
+
+            <button class="btn btn-premium" onclick="upgradeAccount()">
+                <i class="fas fa-crown"></i> Activate Premium
+            </button>
+        </div>
+    </div>
+
+    <div id="notification-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.min.js"></script>
+    <script>
+        let socket;
+        let currentUser = '';
+        let currentUserEmail = '';
+        let isPremium = false;
+        let currentRoom = 'general';
+        let currentRoomType = 'public';
+        let currentRoomData = null;
+        let userSettings = {};
+        let friendRequests = [];
+        let inCall = false;
+        let isRoomCreator = false;
+        let sessionToken = '';
+        let friends = [];
+        let privateChats = {};
+
+        // Initialize WebSocket
+        function initWebSocket() {
+            socket = io();
+            
+            socket.on('connect', () => {
+                console.log('✅ Connected to EchoRoom');
+                showNotification('Connected to EchoRoom!', 'success');
                 
-                socket.on('connect', () => {
-                    console.log('✅ Connected to EchoRoom');
-                    showNotification('Connected to EchoRoom!', 'success');
-                    
-                    // Try auto-login with saved session
-                    tryAutoLogin();
-                });
+                // Try auto-login with saved session
+                tryAutoLogin();
+            });
 
-                socket.on('disconnect', () => {
-                    console.log('❌ Disconnected from server');
-                    showNotification('Disconnected from server', 'error');
-                });
+            socket.on('disconnect', () => {
+                console.log('❌ Disconnected from server');
+                showNotification('Disconnected from server', 'error');
+            });
 
-                // Auto-login events
-                socket.on('auto_login_success', (data) => {
-                    console.log('✅ Auto-login success:', data);
-                    handleLoginSuccess(data);
-                });
+            // Auto-login events
+            socket.on('auto_login_success', (data) => {
+                console.log('✅ Auto-login success:', data);
+                handleLoginSuccess(data);
+            });
 
-                socket.on('auto_login_error', (data) => {
-                    console.log('❌ Auto-login failed');
-                    // Show auth modal if auto-login fails
-                    document.getElementById('auth-modal').style.display = 'flex';
-                });
+            socket.on('auto_login_error', (data) => {
+                console.log('❌ Auto-login failed');
+                // Show auth modal if auto-login fails
+                document.getElementById('auth-modal').style.display = 'flex';
+            });
 
-                // Login/Signup events
-                socket.on('login_success', (data) => {
-                    console.log('✅ Login success:', data);
-                    handleLoginSuccess(data);
-                    
-                    // Save session if remember me is checked
-                    const rememberMe = document.getElementById('remember-me')?.checked || 
-                                      document.getElementById('remember-signup')?.checked;
-                    if (rememberMe && data.session_token) {
-                        saveSession(data.email, data.session_token, data.username);
-                    }
-                });
-
-                socket.on('login_error', (data) => {
-                    console.log('❌ Login error:', data);
-                    showNotification(data.message || 'Login failed', 'error');
-                });
-
-                socket.on('signup_success', (data) => {
-                    console.log('✅ Signup success:', data);
-                    showNotification('Account created! Welcome email sent. Please login.', 'success');
-                    showAuthTab('login');
-                    
-                    // Auto-fill email
-                    document.getElementById('login-email').value = data.email;
-                });
-
-                socket.on('signup_error', (data) => {
-                    console.log('❌ Signup error:', data);
-                    showNotification(data.message || 'Signup failed', 'error');
-                });
-
-                // Session events
-                socket.on('session_expired', (data) => {
-                    console.log('❌ Session expired');
-                    showNotification('Session expired. Please login again.', 'error');
-                    clearSession();
-                    document.getElementById('auth-modal').style.display = 'flex';
-                });
-
-                // Messages
-                socket.on('message', (data) => {
-                    console.log('📨 New message:', data);
-                    addMessage(data);
-                });
-
-                socket.on('chat_messages', (messages) => {
-                    console.log('📨 Chat messages loaded:', messages?.length);
-                    const messagesDiv = document.getElementById('chat-messages');
-                    messagesDiv.innerHTML = '';
-                    if (messages && messages.length > 0) {
-                        messages.forEach(msg => addMessage(msg));
-                    }
-                });
-
-                socket.on('message_deleted', (data) => {
-                    console.log('🗑️ Message deleted:', data);
-                    const messageDiv = document.querySelector(`[data-message-id="${data.message_id}"]`);
-                    if (messageDiv) {
-                        messageDiv.innerHTML = '<div style="opacity: 0.5; font-style: italic; padding: 10px;">Message deleted</div>';
-                    }
-                });
-
-                // User settings
-                socket.on('user_settings', (settings) => {
-                    console.log('⚙️ User settings loaded:', settings);
-                    userSettings = settings || {};
-                    loadUserSettings();
-                });
-
-                socket.on('user_settings_updated', (data) => {
-                    console.log('✅ Settings updated');
-                    showNotification('Settings saved!', 'success');
-                });
-
-                // Rooms
-                socket.on('room_list', (rooms) => {
-                    console.log('🏠 Rooms loaded:', rooms);
-                    updateRoomList(rooms);
-                });
-
-                socket.on('room_created', (data) => {
-                    console.log('✅ Room created:', data.room);
-                    addRoomToList(data.room);
-                    showNotification(`Room "${data.room.name}" created!`, 'success');
-                    hideCreateRoomModal();
-                });
-
-                socket.on('room_joined', (data) => {
-                    console.log('✅ Room joined:', data);
-                    currentRoomData = data.room;
-                    updateRoomHeader();
-                    updateRoomMembers(data.members || []);
-                });
-
-                socket.on('room_left', (data) => {
-                    console.log('✅ Left room:', data);
-                    showNotification(data.message || 'Left room', 'info');
-                    if (currentRoom !== 'general') {
-                        currentRoom = 'general';
-                        joinRoom('general', 'General');
-                    }
-                });
-
-                socket.on('room_deleted', (data) => {
-                    console.log('🗑️ Room deleted:', data);
-                    showNotification(data.message || 'Room deleted', 'info');
-                    if (currentRoom !== 'general') {
-                        currentRoom = 'general';
-                        joinRoom('general', 'General');
-                    }
-                });
-
-                socket.on('room_join_error', (data) => {
-                    console.log('❌ Room join error:', data);
-                    showNotification(data.message || 'Cannot join room', 'error');
-                });
-
-                socket.on('invite_link', (data) => {
-                    console.log('🔗 Invite link:', data);
-                    document.getElementById('invite-link').textContent = data.link;
-                });
-
-                socket.on('invite_link_error', (data) => {
-                    console.log('❌ Invite link error:', data);
-                    showNotification(data.message || 'Cannot generate invite', 'error');
-                });
-
-                socket.on('room_members_updated', (members) => {
-                    console.log('👥 Room members updated:', members);
-                    updateRoomMembers(members);
-                });
-
-                // Friends
-                socket.on('friends_list', (friends) => {
-                    console.log('👥 Friends loaded:', friends);
-                    updateFriendsList(friends);
-                });
-
-                socket.on('friend_request_sent', (data) => {
-                    console.log('✅ Friend request sent');
-                    showNotification('Friend request sent!', 'success');
-                    hideAddFriendModal();
-                });
-
-                socket.on('friend_request_error', (data) => {
-                    console.log('❌ Friend request error');
-                    showNotification(data.message || 'Friend request failed', 'error');
-                });
-
-                socket.on('friend_requests', (data) => {
-                    console.log('📬 Friend requests:', data.requests);
-                    friendRequests = data.requests || [];
-                    updateFriendRequestsList();
-                    updateFriendRequestsBadge();
-                });
-
-                socket.on('friend_request_received', (data) => {
-                    console.log('📬 Friend request received:', data);
-                    showNotification(`${data.from} sent you a friend request!`, 'info');
-                    socket.emit('get_friend_requests', { username: currentUser });
-                });
-
-                socket.on('friend_request_accepted', (data) => {
-                    console.log('✅ Friend request accepted:', data);
-                    showNotification(`${data.friend} accepted your friend request!`, 'success');
-                });
-
-                socket.on('friend_added', (data) => {
-                    console.log('✅ Friend added:', data);
-                    showNotification(`You are now friends with ${data.friend}!`, 'success');
-                    socket.emit('get_friends', { username: currentUser });
-                });
-
-                socket.on('friend_removed', (data) => {
-                    console.log('🗑️ Friend removed:', data);
-                    showNotification(`Removed ${data.friend} from friends`, 'info');
-                    socket.emit('get_friends', { username: currentUser });
-                });
-
-                // Premium
-                socket.on('premium_activated', (data) => {
-                    console.log('✅ Premium activated');
-                    isPremium = true;
-                    updateUserPremiumStatus(true);
-                    showNotification('Premium activated for 30 days!', 'success');
-                    hideUpgradeModal();
-                });
-
-                socket.on('premium_error', (data) => {
-                    console.log('❌ Premium error');
-                    showNotification(data.message || 'Premium activation failed', 'error');
-                });
-
-                // Call events
-                socket.on('call_started', (data) => {
-                    console.log('📞 Call started:', data);
-                    showNotification(`${data.from} is calling you!`, 'info');
-                    inCall = true;
-                    updateCallButton();
-                });
-
-                socket.on('call_ended', (data) => {
-                    console.log('📞 Call ended:', data);
-                    inCall = false;
-                    updateCallButton();
-                    showNotification('Call ended', 'info');
-                });
-
-                socket.on('call_error', (data) => {
-                    console.log('❌ Call error:', data);
-                    showNotification(data.message || 'Call failed', 'error');
-                });
-
-                // Security events
-                socket.on('password_changed', (data) => {
-                    console.log('✅ Password changed');
-                    showNotification('Password changed successfully!', 'success');
-                    document.getElementById('current-password').value = '';
-                    document.getElementById('new-password').value = '';
-                    document.getElementById('confirm-new-password').value = '';
-                });
-
-                socket.on('password_error', (data) => {
-                    console.log('❌ Password change error');
-                    showNotification(data.message || 'Password change failed', 'error');
-                });
-
-                socket.on('logged_out_all', (data) => {
-                    console.log('✅ Logged out all devices');
-                    showNotification('Logged out from all devices', 'info');
-                    clearSession();
-                    location.reload();
-                });
-            }
-
-            // ========== SESSION MANAGEMENT ==========
-            function saveSession(email, token, username) {
-                const sessionData = {
-                    email: email,
-                    token: token,
-                    username: username,
-                    timestamp: Date.now()
-                };
-                localStorage.setItem('echoRoomSession', JSON.stringify(sessionData));
-                console.log('💾 Session saved');
-            }
-
-            function getSession() {
-                const sessionData = localStorage.getItem('echoRoomSession');
-                if (!sessionData) return null;
+            // Login/Signup events
+            socket.on('login_success', (data) => {
+                console.log('✅ Login success:', data);
+                handleLoginSuccess(data);
                 
-                try {
-                    return JSON.parse(sessionData);
-                } catch (e) {
-                    return null;
+                // Save session if remember me is checked
+                const rememberMe = document.getElementById('remember-me')?.checked || 
+                                  document.getElementById('remember-signup')?.checked;
+                if (rememberMe && data.session_token) {
+                    saveSession(data.email, data.session_token, data.username);
                 }
-            }
+            });
 
-            function clearSession() {
-                localStorage.removeItem('echoRoomSession');
-                console.log('🗑️ Session cleared');
-            }
+            socket.on('login_error', (data) => {
+                console.log('❌ Login error:', data);
+                showNotification(data.message || 'Login failed', 'error');
+            });
 
-            function tryAutoLogin() {
-                const session = getSession();
-                if (session && session.email && session.token) {
-                    console.log('🔑 Attempting auto-login...');
-                    socket.emit('auto_login', {
-                        email: session.email,
-                        token: session.token
+            socket.on('signup_success', (data) => {
+                console.log('✅ Signup success:', data);
+                showNotification('Account created! Welcome email sent. Please login.', 'success');
+                showAuthTab('login');
+                
+                // Auto-fill email
+                document.getElementById('login-email').value = data.email;
+            });
+
+            socket.on('signup_error', (data) => {
+                console.log('❌ Signup error:', data);
+                showNotification(data.message || 'Signup failed', 'error');
+            });
+
+            // Session events
+            socket.on('session_expired', (data) => {
+                console.log('❌ Session expired');
+                showNotification('Session expired. Please login again.', 'error');
+                clearSession();
+                document.getElementById('auth-modal').style.display = 'flex';
+            });
+
+            // Messages
+            socket.on('message', (data) => {
+                console.log('📨 New message:', data);
+                addMessage(data);
+            });
+
+            socket.on('chat_messages', (messages) => {
+                console.log('📨 Chat messages loaded:', messages?.length);
+                const messagesDiv = document.getElementById('chat-messages');
+                messagesDiv.innerHTML = '';
+                if (messages && messages.length > 0) {
+                    messages.forEach(msg => addMessage(msg));
+                }
+            });
+
+            socket.on('message_deleted', (data) => {
+                console.log('🗑️ Message deleted:', data);
+                const messageDiv = document.querySelector(`[data-message-id="${data.message_id}"]`);
+                if (messageDiv) {
+                    messageDiv.innerHTML = '<div style="opacity: 0.5; font-style: italic; padding: 10px;">Message deleted</div>';
+                }
+            });
+
+            // Private chat messages
+            socket.on('private_message', (data) => {
+                console.log('📨 Private message from:', data.from);
+                // If we're in a private chat with this user, show the message
+                if (currentRoom === `dm_${data.from}` || currentRoom === `dm_${data.to}`) {
+                    addMessage({
+                        ...data,
+                        username: data.from,
+                        server: currentRoom
                     });
                 } else {
-                    console.log('❌ No saved session found');
-                    document.getElementById('auth-modal').style.display = 'flex';
+                    // Show notification for new private message
+                    showNotification(`New private message from ${data.from}`, 'info');
+                    // Update friend list to show notification
+                    updateFriendsList(friends);
                 }
-            }
+            });
 
-            // ========== VALIDATION FUNCTIONS ==========
-            function validateEmail(input, hintId) {
-                const email = input.value.trim();
-                const hint = document.getElementById(hintId);
-                const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
-                
-                if (!email) {
-                    hint.className = 'email-hint';
-                    hint.innerHTML = '<i class="fas fa-info-circle"></i> Must be a valid Gmail address';
-                    return false;
+            socket.on('private_messages', (data) => {
+                console.log('📨 Private messages loaded for:', data.friend);
+                const messagesDiv = document.getElementById('chat-messages');
+                messagesDiv.innerHTML = '';
+                if (data.messages && data.messages.length > 0) {
+                    data.messages.forEach(msg => addMessage(msg));
                 }
-                
-                if (emailRegex.test(email)) {
-                    hint.className = 'email-hint valid';
-                    hint.innerHTML = '<i class="fas fa-check-circle"></i> Valid Gmail address';
-                    return true;
-                } else {
-                    hint.className = 'email-hint invalid';
-                    hint.innerHTML = '<i class="fas fa-exclamation-circle"></i> Must be a @gmail.com address';
-                    return false;
-                }
-            }
+            });
 
-            function validateUsername(input) {
-                const username = input.value.trim();
-                const hint = document.getElementById('username-hint');
-                const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
-                
-                if (!username) {
-                    hint.className = 'email-hint';
-                    hint.innerHTML = '<i class="fas fa-info-circle"></i> 3-20 characters, letters and numbers only';
-                    return false;
-                }
-                
-                if (usernameRegex.test(username)) {
-                    hint.className = 'email-hint valid';
-                    hint.innerHTML = '<i class="fas fa-check-circle"></i> Valid username';
-                    return true;
-                } else {
-                    hint.className = 'email-hint invalid';
-                    hint.innerHTML = '<i class="fas fa-exclamation-circle"></i> 3-20 characters, letters/numbers/underscore only';
-                    return false;
-                }
-            }
+            // User settings
+            socket.on('user_settings', (settings) => {
+                console.log('⚙️ User settings loaded:', settings);
+                userSettings = settings || {};
+                loadUserSettings();
+            });
 
-            function validatePassword(input) {
-                const password = input.value;
-                const hint = document.getElementById('password-hint');
-                
-                if (!password) {
-                    hint.className = 'email-hint';
-                    hint.innerHTML = '<i class="fas fa-info-circle"></i> Minimum 8 characters';
-                    return false;
-                }
-                
-                if (password.length >= 8) {
-                    hint.className = 'email-hint valid';
-                    hint.innerHTML = '<i class="fas fa-check-circle"></i> Strong password';
-                    return true;
-                } else {
-                    hint.className = 'email-hint invalid';
-                    hint.innerHTML = '<i class="fas fa-exclamation-circle"></i> Password must be at least 8 characters';
-                    return false;
-                }
-            }
+            socket.on('user_settings_updated', (data) => {
+                console.log('✅ Settings updated');
+                showNotification('Settings saved!', 'success');
+            });
 
-            function validatePasswordConfirm(input) {
-                const password = document.getElementById('signup-password').value;
-                const confirmPassword = input.value;
-                const passwordHint = document.getElementById('password-hint');
-                
-                if (!confirmPassword) return false;
-                
-                if (password === confirmPassword) {
-                    passwordHint.className = 'email-hint valid';
-                    passwordHint.innerHTML = '<i class="fas fa-check-circle"></i> Passwords match';
-                    return true;
-                } else {
-                    passwordHint.className = 'email-hint invalid';
-                    passwordHint.innerHTML = '<i class="fas fa-exclamation-circle"></i> Passwords do not match';
-                    return false;
-                }
-            }
+            // Rooms
+            socket.on('room_list', (rooms) => {
+                console.log('🏠 Rooms loaded:', rooms);
+                updateRoomList(rooms);
+            });
 
-            // ========== AUTHENTICATION FUNCTIONS ==========
-            function showAuthTab(tabName) {
-                document.querySelectorAll('.auth-section').forEach(tab => {
-                    tab.classList.remove('active');
-                });
-                document.querySelectorAll('.auth-tab').forEach(btn => {
-                    btn.classList.remove('active');
-                });
-                
-                document.getElementById(`${tabName}-section`).classList.add('active');
-                event.target.classList.add('active');
-                
-                // Focus first input
-                if (tabName === 'login') {
-                    document.getElementById('login-email').focus();
-                } else {
-                    document.getElementById('signup-username').focus();
-                }
-            }
+            socket.on('room_created', (data) => {
+                console.log('✅ Room created:', data.room);
+                addRoomToList(data.room);
+                showNotification(`Room "${data.room.name}" created!`, 'success');
+                hideCreateRoomModal();
+            });
 
-            function hideAuthModal() {
-                document.getElementById('auth-modal').style.display = 'none';
-            }
+            socket.on('room_joined', (data) => {
+                console.log('✅ Room joined:', data);
+                currentRoomData = data.room;
+                currentRoomType = data.room.type;
+                updateRoomHeader();
+                updateRoomMembers(data.members || []);
+            });
 
-            function login() {
-                const email = document.getElementById('login-email').value.trim();
-                const password = document.getElementById('login-password').value.trim();
-                const rememberMe = document.getElementById('remember-me').checked;
-                
-                if (!email || !password) {
-                    showNotification('Please fill all fields', 'error');
-                    return;
+            socket.on('room_left', (data) => {
+                console.log('✅ Left room:', data);
+                showNotification(data.message || 'Left room', 'info');
+                if (currentRoom !== 'general' && !currentRoom.startsWith('dm_')) {
+                    currentRoom = 'general';
+                    joinRoom('general', 'General');
                 }
-                
-                if (!validateEmail(document.getElementById('login-email'), 'login-email-hint')) {
-                    showNotification('Please enter a valid Gmail address', 'error');
-                    return;
-                }
-                
-                console.log('🔑 Attempting login with:', email);
-                socket.emit('login', { 
-                    email: email, 
-                    password: password,
-                    remember_me: rememberMe
-                });
-            }
+            });
 
-            function signup() {
-                const username = document.getElementById('signup-username').value.trim();
-                const email = document.getElementById('signup-email').value.trim();
-                const password = document.getElementById('signup-password').value;
-                const confirmPassword = document.getElementById('signup-password-confirm').value;
-                const rememberMe = document.getElementById('remember-signup').checked;
-                
-                if (!username || !email || !password || !confirmPassword) {
-                    showNotification('Please fill all fields', 'error');
-                    return;
+            socket.on('room_deleted', (data) => {
+                console.log('🗑️ Room deleted:', data);
+                showNotification(data.message || 'Room deleted', 'info');
+                if (currentRoom !== 'general' && !currentRoom.startsWith('dm_')) {
+                    currentRoom = 'general';
+                    joinRoom('general', 'General');
                 }
-                
-                if (!validateUsername(document.getElementById('signup-username'))) {
-                    showNotification('Invalid username format', 'error');
-                    return;
-                }
-                
-                if (!validateEmail(document.getElementById('signup-email'), 'signup-email-hint')) {
-                    showNotification('Please enter a valid Gmail address', 'error');
-                    return;
-                }
-                
-                if (!validatePassword(document.getElementById('signup-password'))) {
-                    showNotification('Password must be at least 8 characters', 'error');
-                    return;
-                }
-                
-                if (!validatePasswordConfirm(document.getElementById('signup-password-confirm'))) {
-                    showNotification('Passwords do not match', 'error');
-                    return;
-                }
-                
-                console.log('📝 Attempting signup:', { username, email });
-                socket.emit('signup', { 
-                    username: username, 
-                    email: email, 
-                    password: password,
-                    remember_me: rememberMe
-                });
-            }
+            });
 
-            function handleLoginSuccess(data) {
-                console.log('🎉 Login success handler triggered');
-                currentUser = data.username;
-                currentUserEmail = data.email;
-                isPremium = data.premium || false;
-                sessionToken = data.session_token || '';
-                
-                // Update UI
-                document.getElementById('auth-modal').style.display = 'none';
-                document.getElementById('main-app').style.display = 'flex';
-                document.getElementById('username-display').textContent = currentUser;
-                
-                // Update security tab with email
-                if (document.getElementById('security-email')) {
-                    document.getElementById('security-email').value = currentUserEmail;
-                }
-                
-                updateUserPremiumStatus(isPremium);
-                
-                // Load data
-                socket.emit('get_user_settings', { username: currentUser });
-                socket.emit('get_rooms');
-                socket.emit('get_friends', { username: currentUser });
+            socket.on('room_join_error', (data) => {
+                console.log('❌ Room join error:', data);
+                showNotification(data.message || 'Cannot join room', 'error');
+            });
+
+            socket.on('invite_link', (data) => {
+                console.log('🔗 Invite link:', data);
+                document.getElementById('invite-link').textContent = data.link;
+            });
+
+            socket.on('invite_link_error', (data) => {
+                console.log('❌ Invite link error:', data);
+                showNotification(data.message || 'Cannot generate invite', 'error');
+            });
+
+            socket.on('room_members_updated', (members) => {
+                console.log('👥 Room members updated:', members);
+                updateRoomMembers(members);
+            });
+
+            // Friends
+            socket.on('friends_list', (data) => {
+                console.log('👥 Friends loaded:', data);
+                friends = data.friends || [];
+                updateFriendsList(friends);
+            });
+
+            socket.on('friend_request_sent', (data) => {
+                console.log('✅ Friend request sent');
+                showNotification('Friend request sent!', 'success');
+                hideAddFriendModal();
+            });
+
+            socket.on('friend_request_error', (data) => {
+                console.log('❌ Friend request error');
+                showNotification(data.message || 'Friend request failed', 'error');
+            });
+
+            socket.on('friend_requests', (data) => {
+                console.log('📬 Friend requests:', data.requests);
+                friendRequests = data.requests || [];
+                updateFriendRequestsList();
+                updateFriendRequestsBadge();
+            });
+
+            socket.on('friend_request_received', (data) => {
+                console.log('📬 Friend request received:', data);
+                showNotification(`${data.from} sent you a friend request!`, 'info');
                 socket.emit('get_friend_requests', { username: currentUser });
-                
-                // Join general room
-                socket.emit('join_room', {
-                    username: currentUser,
-                    room: 'general'
-                });
-                
-                // Load messages for general room
-                socket.emit('get_room_messages', { room: 'general' });
-                
-                showNotification(`Welcome ${currentUser}!`, 'success');
-            }
+            });
 
-            // ========== SECURITY FUNCTIONS ==========
-            function changePassword() {
-                const currentPass = document.getElementById('current-password').value;
-                const newPass = document.getElementById('new-password').value;
-                const confirmPass = document.getElementById('confirm-new-password').value;
-                
-                if (!currentPass || !newPass || !confirmPass) {
-                    showNotification('Please fill all password fields', 'error');
-                    return;
-                }
-                
-                if (newPass.length < 8) {
-                    showNotification('New password must be at least 8 characters', 'error');
-                    return;
-                }
-                
-                if (newPass !== confirmPass) {
-                    showNotification('New passwords do not match', 'error');
-                    return;
-                }
-                
-                socket.emit('change_password', {
+            socket.on('friend_request_accepted', (data) => {
+                console.log('✅ Friend request accepted:', data);
+                showNotification(`${data.friend} accepted your friend request!`, 'success');
+            });
+
+            socket.on('friend_added', (data) => {
+                console.log('✅ Friend added:', data);
+                showNotification(`You are now friends with ${data.friend}!`, 'success');
+                // Automatically create a private chat room
+                createPrivateChatRoom(data.friend);
+                socket.emit('get_friends', { username: currentUser });
+            });
+
+            socket.on('friend_removed', (data) => {
+                console.log('🗑️ Friend removed:', data);
+                showNotification(`Removed ${data.friend} from friends`, 'info');
+                socket.emit('get_friends', { username: currentUser });
+            });
+
+            // Premium
+            socket.on('premium_activated', (data) => {
+                console.log('✅ Premium activated');
+                isPremium = true;
+                updateUserPremiumStatus(true);
+                showNotification('Premium activated for 30 days!', 'success');
+                hideUpgradeModal();
+            });
+
+            socket.on('premium_error', (data) => {
+                console.log('❌ Premium error');
+                showNotification(data.message || 'Premium activation failed', 'error');
+            });
+
+            // Call events
+            socket.on('call_started', (data) => {
+                console.log('📞 Call started:', data);
+                showNotification(`${data.from} is calling you!`, 'info');
+                inCall = true;
+                updateCallButton();
+            });
+
+            socket.on('call_ended', (data) => {
+                console.log('📞 Call ended:', data);
+                inCall = false;
+                updateCallButton();
+                showNotification('Call ended', 'info');
+            });
+
+            socket.on('call_error', (data) => {
+                console.log('❌ Call error:', data);
+                showNotification(data.message || 'Call failed', 'error');
+            });
+
+            // Security events
+            socket.on('password_changed', (data) => {
+                console.log('✅ Password changed');
+                showNotification('Password changed successfully!', 'success');
+                document.getElementById('current-password').value = '';
+                document.getElementById('new-password').value = '';
+                document.getElementById('confirm-new-password').value = '';
+            });
+
+            socket.on('password_error', (data) => {
+                console.log('❌ Password change error');
+                showNotification(data.message || 'Password change failed', 'error');
+            });
+
+            socket.on('logged_out_all', (data) => {
+                console.log('✅ Logged out all devices');
+                showNotification('Logged out from all devices', 'info');
+                clearSession();
+                location.reload();
+            });
+
+            // Room friend events
+            socket.on('friend_added_to_room', (data) => {
+                console.log('✅ Friend added to room:', data);
+                showNotification(`Added ${data.friend} to room`, 'success');
+                hideAddFriendToRoomModal();
+            });
+
+            socket.on('friend_added_to_room_error', (data) => {
+                console.log('❌ Friend add to room error');
+                showNotification(data.message || 'Cannot add friend to room', 'error');
+            });
+
+            // Private chat events
+            socket.on('private_chat_created', (data) => {
+                console.log('✅ Private chat created:', data);
+                privateChats[data.friend] = data.room_id;
+                addPrivateChatToList(data.friend, data.room_id);
+            });
+        }
+
+        // ========== SESSION MANAGEMENT ==========
+        function saveSession(email, token, username) {
+            const sessionData = {
+                email: email,
+                token: token,
+                username: username,
+                timestamp: Date.now()
+            };
+            localStorage.setItem('echoRoomSession', JSON.stringify(sessionData));
+            console.log('💾 Session saved');
+        }
+
+        function getSession() {
+            const sessionData = localStorage.getItem('echoRoomSession');
+            if (!sessionData) return null;
+            
+            try {
+                return JSON.parse(sessionData);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function clearSession() {
+            localStorage.removeItem('echoRoomSession');
+            console.log('🗑️ Session cleared');
+        }
+
+        function tryAutoLogin() {
+            const session = getSession();
+            if (session && session.email && session.token) {
+                console.log('🔑 Attempting auto-login...');
+                socket.emit('auto_login', {
+                    email: session.email,
+                    token: session.token
+                });
+            } else {
+                console.log('❌ No saved session found');
+                document.getElementById('auth-modal').style.display = 'flex';
+            }
+        }
+
+        // ========== VALIDATION FUNCTIONS ==========
+        function validateEmail(input, hintId) {
+            const email = input.value.trim();
+            const hint = document.getElementById(hintId);
+            const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+            
+            if (!email) {
+                hint.className = 'email-hint';
+                hint.innerHTML = '<i class="fas fa-info-circle"></i> Must be a valid Gmail address';
+                return false;
+            }
+            
+            if (emailRegex.test(email)) {
+                hint.className = 'email-hint valid';
+                hint.innerHTML = '<i class="fas fa-check-circle"></i> Valid Gmail address';
+                return true;
+            } else {
+                hint.className = 'email-hint invalid';
+                hint.innerHTML = '<i class="fas fa-exclamation-circle"></i> Must be a @gmail.com address';
+                return false;
+            }
+        }
+
+        function validateUsername(input) {
+            const username = input.value.trim();
+            const hint = document.getElementById('username-hint');
+            const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
+            
+            if (!username) {
+                hint.className = 'email-hint';
+                hint.innerHTML = '<i class="fas fa-info-circle"></i> 3-20 characters, letters and numbers only';
+                return false;
+            }
+            
+            if (usernameRegex.test(username)) {
+                hint.className = 'email-hint valid';
+                hint.innerHTML = '<i class="fas fa-check-circle"></i> Valid username';
+                return true;
+            } else {
+                hint.className = 'email-hint invalid';
+                hint.innerHTML = '<i class="fas fa-exclamation-circle"></i> 3-20 characters, letters/numbers/underscore only';
+                return false;
+            }
+        }
+
+        function validatePassword(input) {
+            const password = input.value;
+            const hint = document.getElementById('password-hint');
+            
+            if (!password) {
+                hint.className = 'email-hint';
+                hint.innerHTML = '<i class="fas fa-info-circle"></i> Minimum 8 characters';
+                return false;
+            }
+            
+            if (password.length >= 8) {
+                hint.className = 'email-hint valid';
+                hint.innerHTML = '<i class="fas fa-check-circle"></i> Strong password';
+                return true;
+            } else {
+                hint.className = 'email-hint invalid';
+                hint.innerHTML = '<i class="fas fa-exclamation-circle"></i> Password must be at least 8 characters';
+                return false;
+            }
+        }
+
+        function validatePasswordConfirm(input) {
+            const password = document.getElementById('signup-password').value;
+            const confirmPassword = input.value;
+            const passwordHint = document.getElementById('password-hint');
+            
+            if (!confirmPassword) return false;
+            
+            if (password === confirmPassword) {
+                passwordHint.className = 'email-hint valid';
+                passwordHint.innerHTML = '<i class="fas fa-check-circle"></i> Passwords match';
+                return true;
+            } else {
+                passwordHint.className = 'email-hint invalid';
+                passwordHint.innerHTML = '<i class="fas fa-exclamation-circle"></i> Passwords do not match';
+                return false;
+            }
+        }
+
+        // ========== AUTHENTICATION FUNCTIONS ==========
+        function showAuthTab(tabName) {
+            document.querySelectorAll('.auth-section').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.auth-tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            document.getElementById(`${tabName}-section`).classList.add('active');
+            event.target.classList.add('active');
+            
+            // Focus first input
+            if (tabName === 'login') {
+                document.getElementById('login-email').focus();
+            } else {
+                document.getElementById('signup-username').focus();
+            }
+        }
+
+        function hideAuthModal() {
+            document.getElementById('auth-modal').style.display = 'none';
+        }
+
+        function login() {
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value.trim();
+            const rememberMe = document.getElementById('remember-me').checked;
+            
+            if (!email || !password) {
+                showNotification('Please fill all fields', 'error');
+                return;
+            }
+            
+            if (!validateEmail(document.getElementById('login-email'), 'login-email-hint')) {
+                showNotification('Please enter a valid Gmail address', 'error');
+                return;
+            }
+            
+            console.log('🔑 Attempting login with:', email);
+            socket.emit('login', { 
+                email: email, 
+                password: password,
+                remember_me: rememberMe
+            });
+        }
+
+        function signup() {
+            const username = document.getElementById('signup-username').value.trim();
+            const email = document.getElementById('signup-email').value.trim();
+            const password = document.getElementById('signup-password').value;
+            const confirmPassword = document.getElementById('signup-password-confirm').value;
+            const rememberMe = document.getElementById('remember-signup').checked;
+            
+            if (!username || !email || !password || !confirmPassword) {
+                showNotification('Please fill all fields', 'error');
+                return;
+            }
+            
+            if (!validateUsername(document.getElementById('signup-username'))) {
+                showNotification('Invalid username format', 'error');
+                return;
+            }
+            
+            if (!validateEmail(document.getElementById('signup-email'), 'signup-email-hint')) {
+                showNotification('Please enter a valid Gmail address', 'error');
+                return;
+            }
+            
+            if (!validatePassword(document.getElementById('signup-password'))) {
+                showNotification('Password must be at least 8 characters', 'error');
+                return;
+            }
+            
+            if (!validatePasswordConfirm(document.getElementById('signup-password-confirm'))) {
+                showNotification('Passwords do not match', 'error');
+                return;
+            }
+            
+            console.log('📝 Attempting signup:', { username, email });
+            socket.emit('signup', { 
+                username: username, 
+                email: email, 
+                password: password,
+                remember_me: rememberMe
+            });
+        }
+
+        function handleLoginSuccess(data) {
+            console.log('🎉 Login success handler triggered');
+            currentUser = data.username;
+            currentUserEmail = data.email;
+            isPremium = data.premium || false;
+            sessionToken = data.session_token || '';
+            
+            // Update UI
+            document.getElementById('auth-modal').style.display = 'none';
+            document.getElementById('main-app').style.display = 'flex';
+            document.getElementById('username-display').textContent = currentUser;
+            
+            // Update security tab with email
+            if (document.getElementById('security-email')) {
+                document.getElementById('security-email').value = currentUserEmail;
+            }
+            
+            updateUserPremiumStatus(isPremium);
+            
+            // Load data
+            socket.emit('get_user_settings', { username: currentUser });
+            socket.emit('get_rooms');
+            socket.emit('get_friends', { username: currentUser });
+            socket.emit('get_friend_requests', { username: currentUser });
+            
+            // Join general room
+            socket.emit('join_room', {
+                username: currentUser,
+                room: 'general'
+            });
+            
+            // Load messages for general room
+            socket.emit('get_room_messages', { room: 'general' });
+            
+            showNotification(`Welcome ${currentUser}!`, 'success');
+        }
+
+        // ========== SECURITY FUNCTIONS ==========
+        function changePassword() {
+            const currentPass = document.getElementById('current-password').value;
+            const newPass = document.getElementById('new-password').value;
+            const confirmPass = document.getElementById('confirm-new-password').value;
+            
+            if (!currentPass || !newPass || !confirmPass) {
+                showNotification('Please fill all password fields', 'error');
+                return;
+            }
+            
+            if (newPass.length < 8) {
+                showNotification('New password must be at least 8 characters', 'error');
+                return;
+            }
+            
+            if (newPass !== confirmPass) {
+                showNotification('New passwords do not match', 'error');
+                return;
+            }
+            
+            socket.emit('change_password', {
+                email: currentUserEmail,
+                current_password: currentPass,
+                new_password: newPass,
+                session_token: sessionToken
+            });
+        }
+
+        function logoutAllDevices() {
+            if (confirm('Logout from all devices? This will invalidate all active sessions.')) {
+                socket.emit('logout_all_devices', {
                     email: currentUserEmail,
-                    current_password: currentPass,
-                    new_password: newPass,
                     session_token: sessionToken
                 });
             }
+        }
 
-            function logoutAllDevices() {
-                if (confirm('Logout from all devices? This will invalidate all active sessions.')) {
-                    socket.emit('logout_all_devices', {
-                        email: currentUserEmail,
-                        session_token: sessionToken
-                    });
+        function logout() {
+            if (confirm('Logout from this device?')) {
+                clearSession();
+                location.reload();
+            }
+        }
+
+        // ========== SETTINGS FUNCTIONS ==========
+        function showSettingsModal() {
+            document.getElementById('settings-modal').style.display = 'flex';
+            loadUserSettings();
+        }
+
+        function hideSettingsModal() {
+            document.getElementById('settings-modal').style.display = 'none';
+        }
+
+        function showSettingsTab(tabName) {
+            document.querySelectorAll('.settings-section').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.settings-tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        function loadUserSettings() {
+            // Load display name
+            const displayNameInput = document.getElementById('display-name');
+            const userBioInput = document.getElementById('user-bio');
+            const themeSelect = document.getElementById('theme-select');
+            const securityEmail = document.getElementById('security-email');
+            
+            displayNameInput.value = userSettings.displayName || currentUser || '';
+            userBioInput.value = userSettings.bio || '';
+            themeSelect.value = userSettings.theme || 'dark';
+            
+            if (securityEmail && currentUserEmail) {
+                securityEmail.value = currentUserEmail;
+            }
+            
+            // Update avatar preview
+            const avatarPreview = document.getElementById('settings-avatar-preview');
+            const userAvatarPreview = document.getElementById('user-avatar-preview');
+            
+            if (userSettings.avatar) {
+                if (userSettings.avatar.startsWith('data:image')) {
+                    avatarPreview.innerHTML = `<img src="${userSettings.avatar}" alt="Avatar">`;
+                    userAvatarPreview.innerHTML = `<img src="${userSettings.avatar}" alt="Avatar">`;
+                } else {
+                    avatarPreview.innerHTML = `<div class="avatar-placeholder">${userSettings.avatar}</div>`;
+                    userAvatarPreview.innerHTML = `<div class="avatar-placeholder">${userSettings.avatar}</div>`;
                 }
             }
-
-            function logout() {
-                if (confirm('Logout from this device?')) {
-                    clearSession();
-                    location.reload();
-                }
+            
+            // Update banner preview
+            const bannerPreview = document.getElementById('settings-banner-preview');
+            const bannerLabel = document.getElementById('banner-upload-label');
+            const bannerInput = document.getElementById('banner-upload');
+            
+            if (userSettings.banner && isPremium) {
+                bannerPreview.innerHTML = `<img src="${userSettings.banner}" alt="Banner">`;
             }
-
-            // ========== SETTINGS FUNCTIONS ==========
-            function showSettingsModal() {
-                document.getElementById('settings-modal').style.display = 'flex';
-                loadUserSettings();
+            
+            if (!isPremium) {
+                bannerLabel.innerHTML = '<i class="fas fa-lock"></i> Premium Feature';
+                bannerLabel.style.opacity = '0.7';
+                bannerLabel.style.cursor = 'not-allowed';
+                bannerInput.disabled = true;
+            } else {
+                bannerLabel.innerHTML = '<i class="fas fa-upload"></i> Upload Banner';
+                bannerLabel.style.opacity = '1';
+                bannerLabel.style.cursor = 'pointer';
+                bannerInput.disabled = false;
             }
+        }
 
-            function hideSettingsModal() {
-                document.getElementById('settings-modal').style.display = 'none';
+        function updateUserPremiumStatus(premium) {
+            isPremium = premium;
+            const premiumBadge = document.getElementById('premium-badge');
+            const upgradeBtn = document.getElementById('upgrade-btn');
+            
+            if (premium) {
+                premiumBadge.style.display = 'inline-block';
+                upgradeBtn.style.display = 'none';
+                document.getElementById('user-status').textContent = '👑 Premium User';
+                document.getElementById('user-status').style.color = '#ffd700';
+            } else {
+                premiumBadge.style.display = 'none';
+                upgradeBtn.style.display = 'block';
+                document.getElementById('user-status').textContent = 'Free User';
+                document.getElementById('user-status').style.color = '';
             }
+        }
 
-            function showSettingsTab(tabName) {
-                document.querySelectorAll('.settings-section').forEach(tab => {
-                    tab.classList.remove('active');
-                });
-                document.querySelectorAll('.settings-tab').forEach(btn => {
-                    btn.classList.remove('active');
-                });
+        function handleAvatarUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const avatarData = e.target.result;
                 
-                document.getElementById(`${tabName}-tab`).classList.add('active');
-                event.target.classList.add('active');
-            }
-
-            function loadUserSettings() {
-                // Load display name
-                const displayNameInput = document.getElementById('display-name');
-                const userBioInput = document.getElementById('user-bio');
-                const themeSelect = document.getElementById('theme-select');
-                const securityEmail = document.getElementById('security-email');
-                
-                displayNameInput.value = userSettings.displayName || currentUser || '';
-                userBioInput.value = userSettings.bio || '';
-                themeSelect.value = userSettings.theme || 'dark';
-                
-                if (securityEmail && currentUserEmail) {
-                    securityEmail.value = currentUserEmail;
-                }
-                
-                // Update avatar preview
+                // Update preview
                 const avatarPreview = document.getElementById('settings-avatar-preview');
-                const userAvatarPreview = document.getElementById('user-avatar-preview');
+                avatarPreview.innerHTML = `<img src="${avatarData}" alt="Avatar">`;
                 
-                if (userSettings.avatar) {
-                    if (userSettings.avatar.startsWith('data:image')) {
-                        avatarPreview.innerHTML = `<img src="${userSettings.avatar}" alt="Avatar">`;
-                        userAvatarPreview.innerHTML = `<img src="${userSettings.avatar}" alt="Avatar">`;
-                    } else {
-                        avatarPreview.innerHTML = `<div class="avatar-placeholder">${userSettings.avatar}</div>`;
-                        userAvatarPreview.innerHTML = `<div class="avatar-placeholder">${userSettings.avatar}</div>`;
-                    }
-                }
+                // Add overlay back
+                const avatarOverlay = document.createElement('div');
+                avatarOverlay.className = 'avatar-overlay';
+                avatarOverlay.innerHTML = '<i class="fas fa-camera"></i> Change Avatar';
+                avatarOverlay.onclick = () => document.getElementById('avatar-upload').click();
+                avatarPreview.appendChild(avatarOverlay);
                 
-                // Update banner preview
+                // Save to user settings
+                userSettings.avatar = avatarData;
+                
+                showNotification('Avatar updated! Click Save to keep changes.', 'success');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleBannerUpload(event) {
+            if (!isPremium) {
+                showNotification('Banner upload is a premium feature!', 'error');
+                return;
+            }
+            
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const bannerData = e.target.result;
+                
+                // Update preview
                 const bannerPreview = document.getElementById('settings-banner-preview');
-                const bannerLabel = document.getElementById('banner-upload-label');
-                const bannerInput = document.getElementById('banner-upload');
+                bannerPreview.innerHTML = `<img src="${bannerData}" alt="Banner">`;
                 
-                if (userSettings.banner && isPremium) {
-                    bannerPreview.innerHTML = `<img src="${userSettings.banner}" alt="Banner">`;
-                }
+                // Save to user settings
+                userSettings.banner = bannerData;
                 
-                if (!isPremium) {
-                    bannerLabel.innerHTML = '<i class="fas fa-lock"></i> Premium Feature';
-                    bannerLabel.style.opacity = '0.7';
-                    bannerLabel.style.cursor = 'not-allowed';
-                    bannerInput.disabled = true;
-                } else {
-                    bannerLabel.innerHTML = '<i class="fas fa-upload"></i> Upload Banner';
-                    bannerLabel.style.opacity = '1';
-                    bannerLabel.style.cursor = 'pointer';
-                    bannerInput.disabled = false;
-                }
-            }
+                showNotification('Banner updated! Click Save to keep changes.', 'success');
+            };
+            reader.readAsDataURL(file);
+        }
 
-            function updateUserPremiumStatus(premium) {
-                isPremium = premium;
-                const premiumBadge = document.getElementById('premium-badge');
-                const upgradeBtn = document.getElementById('upgrade-btn');
-                
-                if (premium) {
-                    premiumBadge.style.display = 'inline-block';
-                    upgradeBtn.style.display = 'none';
-                    document.getElementById('user-status').textContent = '👑 Premium User';
-                    document.getElementById('user-status').style.color = '#ffd700';
-                } else {
-                    premiumBadge.style.display = 'none';
-                    upgradeBtn.style.display = 'block';
-                    document.getElementById('user-status').textContent = 'Free User';
-                    document.getElementById('user-status').style.color = '';
-                }
-            }
+        function saveProfileSettings() {
+            const displayName = document.getElementById('display-name').value.trim() || currentUser;
+            const bio = document.getElementById('user-bio').value.trim();
+            
+            userSettings.displayName = displayName;
+            userSettings.bio = bio;
+            
+            socket.emit('update_user_settings', {
+                username: currentUser,
+                settings: userSettings
+            });
+            
+            // Update UI
+            document.getElementById('username-display').textContent = displayName;
+        }
 
-            function handleAvatarUpload(event) {
-                const file = event.target.files[0];
-                if (!file) return;
-                
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const avatarData = e.target.result;
-                    
-                    // Update preview
-                    const avatarPreview = document.getElementById('settings-avatar-preview');
-                    avatarPreview.innerHTML = `<img src="${avatarData}" alt="Avatar">`;
-                    
-                    // Add overlay back
-                    const avatarOverlay = document.createElement('div');
-                    avatarOverlay.className = 'avatar-overlay';
-                    avatarOverlay.innerHTML = '<i class="fas fa-camera"></i> Change Avatar';
-                    avatarOverlay.onclick = () => document.getElementById('avatar-upload').click();
-                    avatarPreview.appendChild(avatarOverlay);
-                    
-                    // Save to user settings
-                    userSettings.avatar = avatarData;
-                    
-                    showNotification('Avatar updated! Click Save to keep changes.', 'success');
-                };
-                reader.readAsDataURL(file);
-            }
+        function saveAppearanceSettings() {
+            const theme = document.getElementById('theme-select').value;
+            userSettings.theme = theme;
+            
+            socket.emit('update_user_settings', {
+                username: currentUser,
+                settings: userSettings
+            });
+        }
 
-            function handleBannerUpload(event) {
-                if (!isPremium) {
-                    showNotification('Banner upload is a premium feature!', 'error');
-                    return;
-                }
-                
-                const file = event.target.files[0];
-                if (!file) return;
-                
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const bannerData = e.target.result;
-                    
-                    // Update preview
-                    const bannerPreview = document.getElementById('settings-banner-preview');
-                    bannerPreview.innerHTML = `<img src="${bannerData}" alt="Banner">`;
-                    
-                    // Save to user settings
-                    userSettings.banner = bannerData;
-                    
-                    showNotification('Banner updated! Click Save to keep changes.', 'success');
-                };
-                reader.readAsDataURL(file);
-            }
-
-            function saveProfileSettings() {
-                const displayName = document.getElementById('display-name').value.trim() || currentUser;
-                const bio = document.getElementById('user-bio').value.trim();
-                
-                userSettings.displayName = displayName;
-                userSettings.bio = bio;
-                
-                socket.emit('update_user_settings', {
-                    username: currentUser,
-                    settings: userSettings
+        // ========== CHAT FUNCTIONS ==========
+        function sendMessage() {
+            const input = document.getElementById('message-input');
+            const message = input.value.trim();
+            
+            if (!message || !currentUser) return;
+            
+            // Check if we're in a private chat (DM)
+            if (currentRoom.startsWith('dm_')) {
+                const friendUsername = currentRoom.replace('dm_', '');
+                socket.emit('private_message', {
+                    from: currentUser,
+                    to: friendUsername,
+                    message: message,
+                    timestamp: new Date().toISOString()
                 });
-                
-                // Update UI
-                document.getElementById('username-display').textContent = displayName;
-            }
-
-            function saveAppearanceSettings() {
-                const theme = document.getElementById('theme-select').value;
-                userSettings.theme = theme;
-                
-                socket.emit('update_user_settings', {
-                    username: currentUser,
-                    settings: userSettings
-                });
-            }
-
-            // ========== CHAT FUNCTIONS ==========
-            function sendMessage() {
-                const input = document.getElementById('message-input');
-                const message = input.value.trim();
-                
-                if (!message || !currentUser) return;
-                
+            } else {
+                // Regular room message
                 socket.emit('message', {
                     username: currentUser,
                     message: message,
                     server: currentRoom,
                     timestamp: new Date().toISOString()
                 });
-                
-                input.value = '';
-                input.focus();
             }
+            
+            input.value = '';
+            input.focus();
+        }
 
-            function addMessage(data) {
-                const messagesDiv = document.getElementById('chat-messages');
-                
-                const messageDiv = document.createElement('div');
-                messageDiv.className = `message ${data.username === currentUser ? 'own' : ''}`;
-                messageDiv.setAttribute('data-message-id', data.id);
-                messageDiv.style.position = 'relative';
-                
-                // Check if current user can delete this message
-                const canDelete = data.username === currentUser || 
-                                (currentRoomData && currentRoomData.creator === currentUser);
-                
-                messageDiv.innerHTML = `
-                    <div class="message-avatar">
-                        <div class="avatar-placeholder">
-                            ${data.username ? data.username.charAt(0).toUpperCase() : 'U'}
-                        </div>
+        function addMessage(data) {
+            const messagesDiv = document.getElementById('chat-messages');
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${data.username === currentUser ? 'own' : ''}`;
+            messageDiv.setAttribute('data-message-id', data.id || data.timestamp);
+            messageDiv.style.position = 'relative';
+            
+            // Check if current user can delete this message
+            const canDelete = data.username === currentUser || 
+                            (currentRoomData && currentRoomData.creator === currentUser);
+            
+            messageDiv.innerHTML = `
+                <div class="message-avatar">
+                    <div class="avatar-placeholder">
+                        ${data.username ? data.username.charAt(0).toUpperCase() : 'U'}
                     </div>
-                    <div class="message-content">
-                        <div class="message-bubble">
-                            <div class="message-header">
-                                <strong>${data.displayName || data.username || 'Unknown'}</strong>
-                                <span>${new Date(data.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                            </div>
-                            <div class="message-text">${escapeHtml(data.message)}</div>
+                </div>
+                <div class="message-content">
+                    <div class="message-bubble">
+                        <div class="message-header">
+                            <strong>${data.displayName || data.username || 'Unknown'}</strong>
+                            <span>${new Date(data.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                         </div>
-                        ${canDelete ? `
-                        <div class="message-actions">
-                            <button class="msg-action-btn" onclick="deleteMessage('${data.id}')" title="Delete Message">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                        ` : ''}
+                        <div class="message-text">${escapeHtml(data.message)}</div>
                     </div>
-                `;
-                
-                messagesDiv.appendChild(messageDiv);
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            }
+                    ${canDelete ? `
+                    <div class="message-actions">
+                        <button class="msg-action-btn" onclick="deleteMessage('${data.id || data.timestamp}')" title="Delete Message">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
 
-            function deleteMessage(messageId) {
-                if (confirm('Delete this message?')) {
-                    socket.emit('delete_message', {
-                        message_id: messageId,
-                        room_id: currentRoom,
-                        username: currentUser
-                    });
-                }
-            }
-
-            function escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
-            }
-
-            // ========== ROOM FUNCTIONS ==========
-            function updateRoomList(rooms) {
-                const list = document.getElementById('servers-list');
-                list.innerHTML = '';
-                
-                if (!rooms || rooms.length === 0) {
-                    list.innerHTML = '<div style="padding: 10px; opacity: 0.7; text-align: center;">No rooms yet</div>';
-                    return;
-                }
-                
-                rooms.forEach(room => {
-                    addRoomToList(room);
+        function deleteMessage(messageId) {
+            if (confirm('Delete this message?')) {
+                socket.emit('delete_message', {
+                    message_id: messageId,
+                    room_id: currentRoom,
+                    username: currentUser
                 });
             }
+        }
 
-            function addRoomToList(room) {
-                const list = document.getElementById('servers-list');
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ========== ROOM FUNCTIONS ==========
+        function updateRoomList(rooms) {
+            const list = document.getElementById('servers-list');
+            list.innerHTML = '';
+            
+            // Add private chats first
+            Object.keys(privateChats).forEach(friend => {
                 const roomDiv = document.createElement('div');
                 roomDiv.className = 'nav-item';
-                
-                let icon = 'fa-hashtag';
-                if (room.type === 'voice') icon = 'fa-volume-up';
-                if (room.type === 'private') icon = 'fa-lock';
-                
                 roomDiv.innerHTML = `
-                    <i class="fas ${icon}"></i>
-                    <span>${room.name}</span>
-                    ${room.type !== 'public' ? `<span class="room-type-badge ${room.type}">${room.type}</span>` : ''}
+                    <i class="fas fa-user-friends" style="color: #43b581"></i>
+                    <span>${friend}</span>
+                    <span class="room-type-badge dm">DM</span>
                 `;
                 
                 roomDiv.onclick = () => {
-                    joinRoom(room.id, room.name);
+                    joinPrivateChat(friend, privateChats[friend]);
                 };
                 
                 list.appendChild(roomDiv);
+            });
+            
+            // Add separator if there are both private chats and rooms
+            if (Object.keys(privateChats).length > 0 && rooms && rooms.length > 0) {
+                const separator = document.createElement('div');
+                separator.style.padding = '10px';
+                separator.style.opacity = '0.7';
+                separator.style.textAlign = 'center';
+                separator.innerHTML = '─ ROOMS ─';
+                list.appendChild(separator);
             }
-
-            function joinRoom(roomId, roomName) {
-                currentRoom = roomId;
-                document.getElementById('current-chat-name').innerHTML = 
-                    `<i class="fas fa-hashtag"></i> ${roomName}`;
-                
-                document.getElementById('chat-messages').innerHTML = '';
-                
-                socket.emit('join_room', { 
-                    room: roomId, 
-                    username: currentUser 
-                });
-                
-                socket.emit('get_room_messages', { room: roomId });
-                
-                // Update room header
-                updateRoomHeader();
-            }
-
-            function updateRoomHeader() {
-                const actions = document.getElementById('room-header-actions');
-                const deleteBtn = document.getElementById('delete-room-btn');
-                const callBtn = document.getElementById('call-btn');
-                
-                if (currentRoom !== 'general') {
-                    actions.style.display = 'flex';
-                    
-                    // Show delete button only for room creator
-                    if (currentRoomData && currentRoomData.creator === currentUser) {
-                        deleteBtn.style.display = 'inline-flex';
-                        isRoomCreator = true;
-                    } else {
-                        deleteBtn.style.display = 'none';
-                        isRoomCreator = false;
-                    }
-                    
-                    // Show call button only for private rooms
-                    if (currentRoomData && currentRoomData.type === 'private') {
-                        callBtn.style.display = 'inline-flex';
-                    } else {
-                        callBtn.style.display = 'none';
-                    }
-                } else {
-                    actions.style.display = 'none';
+            
+            if (!rooms || rooms.length === 0) {
+                if (Object.keys(privateChats).length === 0) {
+                    list.innerHTML = '<div style="padding: 10px; opacity: 0.7; text-align: center;">No rooms yet</div>';
                 }
-                
-                updateCallButton();
+                return;
             }
+            
+            rooms.forEach(room => {
+                addRoomToList(room);
+            });
+        }
 
-            function updateCallButton() {
-                const callBtn = document.getElementById('call-btn');
-                if (callBtn) {
-                    if (inCall) {
-                        callBtn.innerHTML = '<i class="fas fa-phone-slash"></i> End Call';
-                        callBtn.style.background = 'rgba(255, 46, 99, 0.2)';
-                        callBtn.style.borderColor = 'rgba(255, 46, 99, 0.5)';
-                    } else {
-                        callBtn.innerHTML = '<i class="fas fa-phone"></i> Call';
-                        callBtn.style.background = 'rgba(67, 181, 129, 0.1)';
-                        callBtn.style.borderColor = 'rgba(67, 181, 129, 0.3)';
-                    }
-                }
-            }
-
-            function toggleCall() {
-                if (inCall) {
-                    endCall();
-                } else {
-                    startCall();
-                }
-            }
-
-            function startCall() {
-                socket.emit('start_call', {
-                    from: currentUser,
-                    room_id: currentRoom
-                });
-            }
-
-            function endCall() {
-                socket.emit('end_call', {
-                    room_id: currentRoom
-                });
-            }
-
-            function leaveRoom() {
-                if (currentRoom === 'general') {
-                    showNotification('Cannot leave general room', 'error');
-                    return;
-                }
-                
-                if (confirm('Leave this room?')) {
-                    socket.emit('leave_room', {
-                        username: currentUser,
-                        room_id: currentRoom
-                    });
-                }
-            }
-
-            function deleteRoom() {
-                if (!isRoomCreator) {
-                    showNotification('Only room creator can delete room', 'error');
-                    return;
-                }
-                
-                if (confirm('Delete this room? This action cannot be undone.')) {
-                    socket.emit('delete_room', {
-                        username: currentUser,
-                        room_id: currentRoom
-                    });
-                }
-            }
-
-            function updateRoomMembers(members) {
-                const membersDiv = document.getElementById('room-members');
-                membersDiv.innerHTML = '';
-                
-                if (!members || members.length === 0) {
-                    membersDiv.innerHTML = '<div style="padding: 10px; opacity: 0.7; text-align: center;">No members</div>';
-                    return;
-                }
-                
-                members.forEach(member => {
-                    const memberDiv = document.createElement('div');
-                    memberDiv.className = 'nav-item';
-                    memberDiv.innerHTML = `
-                        <i class="fas fa-user" style="color: ${member.connected ? '#43b581' : '#888'}"></i>
-                        <span>${member.username}</span>
-                        ${member.username === currentUser ? '<span style="margin-left: auto; font-size: 12px; opacity: 0.7;">You</span>' : ''}
-                    `;
-                    membersDiv.appendChild(memberDiv);
-                });
-            }
-
-            // ========== CREATE ROOM FUNCTIONS ==========
-            function showCreateRoomModal() {
-                document.getElementById('create-room-modal').style.display = 'flex';
-                document.getElementById('room-name').focus();
-            }
-
-            function hideCreateRoomModal() {
-                document.getElementById('create-room-modal').style.display = 'none';
-                document.getElementById('room-name').value = '';
-                document.getElementById('room-description').value = '';
-                document.getElementById('room-type').value = 'public';
-            }
-
-            function createRoom() {
-                const name = document.getElementById('room-name').value.trim();
-                const description = document.getElementById('room-description').value.trim();
-                const type = document.getElementById('room-type').value;
-                
-                if (!name) {
-                    showNotification('Room name is required', 'error');
-                    return;
-                }
-                
-                socket.emit('create_room', {
-                    name: name,
-                    description: description,
-                    type: type,
-                    creator: currentUser
-                });
-            }
-
-            // ========== FRIEND FUNCTIONS ==========
-            function showAddFriendModal() {
-                document.getElementById('add-friend-modal').style.display = 'flex';
-                document.getElementById('friend-username').focus();
-            }
-
-            function hideAddFriendModal() {
-                document.getElementById('add-friend-modal').style.display = 'none';
-                document.getElementById('friend-username').value = '';
-            }
-
-            function sendFriendRequest() {
-                const friendUsername = document.getElementById('friend-username').value.trim();
-                
-                if (!friendUsername) {
-                    showNotification('Please enter a username', 'error');
-                    return;
-                }
-                
-                if (friendUsername === currentUser) {
-                    showNotification('You cannot add yourself', 'error');
-                    return;
-                }
-                
-                socket.emit('send_friend_request', {
-                    from: currentUser,
-                    to: friendUsername
-                });
-            }
-
-            function showFriendRequestsModal() {
-                document.getElementById('friend-requests-modal').style.display = 'flex';
-                updateFriendRequestsList();
-            }
-
-            function hideFriendRequestsModal() {
-                document.getElementById('friend-requests-modal').style.display = 'none';
-            }
-
-            function updateFriendRequestsList() {
-                const list = document.getElementById('friend-requests-list');
-                list.innerHTML = '';
-                
-                if (friendRequests.length === 0) {
-                    list.innerHTML = '<div style="padding: 20px; text-align: center; opacity: 0.7;">No friend requests</div>';
-                    return;
-                }
-                
-                friendRequests.forEach(request => {
-                    const requestDiv = document.createElement('div');
-                    requestDiv.style.padding = '15px';
-                    requestDiv.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-                    requestDiv.innerHTML = `
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <strong>${request}</strong>
-                                <div style="font-size: 12px; opacity: 0.7;">Wants to be your friend</div>
-                            </div>
-                            <div>
-                                <button class="action-btn" onclick="acceptFriendRequest('${request}')" title="Accept">
-                                    <i class="fas fa-check"></i> Accept
-                                </button>
-                                <button class="action-btn delete" onclick="declineFriendRequest('${request}')" title="Decline">
-                                    <i class="fas fa-times"></i> Decline
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                    list.appendChild(requestDiv);
-                });
-            }
-
-            function updateFriendsList(friends) {
-                const friendsList = document.getElementById('friends-list');
-                friendsList.innerHTML = '';
-                
-                if (!friends || friends.length === 0) {
-                    friendsList.innerHTML = '<div style="padding: 10px; opacity: 0.7; text-align: center;">No friends yet</div>';
-                    return;
-                }
-                
-                friends.forEach(friend => {
-                    const friendDiv = document.createElement('div');
-                    friendDiv.className = 'nav-item';
-                    friendDiv.innerHTML = `
-                        <i class="fas fa-user" style="color: ${friend.connected ? '#43b581' : '#888'}"></i>
-                        <span>${friend.username}</span>
-                        <span class="friend-status ${friend.connected ? '' : 'offline'}">
-                            ${friend.connected ? 'Online' : 'Offline'}
-                        </span>
-                        <button class="action-btn delete" onclick="removeFriend('${friend.username}')" title="Remove Friend" style="margin-left: auto; padding: 5px 10px; font-size: 12px;">
-                            <i class="fas fa-user-minus"></i>
-                        </button>
-                    `;
-                    friendsList.appendChild(friendDiv);
-                });
-            }
-
-            function acceptFriendRequest(friendUsername) {
-                socket.emit('accept_friend_request', {
-                    username: currentUser,
-                    friend_username: friendUsername
-                });
-            }
-
-            function declineFriendRequest(friendUsername) {
-                socket.emit('decline_friend_request', {
-                    username: currentUser,
-                    friend_username: friendUsername
-                });
-            }
-
-            function removeFriend(friendUsername) {
-                if (confirm(`Remove ${friendUsername} from friends?`)) {
-                    socket.emit('remove_friend', {
-                        username: currentUser,
-                        friend_username: friendUsername
-                    });
-                }
-            }
-
-            function updateFriendRequestsBadge() {
-                const badge = document.getElementById('friend-requests-badge');
-                if (friendRequests.length > 0) {
-                    badge.textContent = friendRequests.length;
-                    badge.style.display = 'block';
-                } else {
-                    badge.style.display = 'none';
-                }
-            }
-
-            // ========== INVITE FUNCTIONS ==========
-            function showInviteModal() {
-                document.getElementById('invite-modal').style.display = 'flex';
-                socket.emit('get_invite_link', {
-                    username: currentUser,
-                    room_id: currentRoom
-                });
-            }
-
-            function hideInviteModal() {
-                document.getElementById('invite-modal').style.display = 'none';
-            }
-
-            function copyInviteLink() {
-                const linkText = document.getElementById('invite-link').textContent;
-                navigator.clipboard.writeText(linkText).then(() => {
-                    showNotification('Invite link copied!', 'success');
-                });
-            }
-
-            // ========== UPGRADE FUNCTIONS ==========
-            function showUpgradeModal() {
-                document.getElementById('upgrade-modal').style.display = 'flex';
-                document.getElementById('upgrade-code').focus();
-            }
-
-            function hideUpgradeModal() {
-                document.getElementById('upgrade-modal').style.display = 'none';
-                document.getElementById('upgrade-code').value = '';
-            }
-
-            function upgradeAccount() {
-                const upgradeCode = document.getElementById('upgrade-code').value.trim();
-                
-                if (!upgradeCode) {
-                    showNotification('Enter upgrade code', 'error');
-                    return;
-                }
-                
-                socket.emit('activate_premium', {
-                    username: currentUser,
-                    code: upgradeCode
-                });
-            }
-
-            // ========== UTILITY FUNCTIONS ==========
-            function showNotification(message, type = 'info') {
-                const container = document.getElementById('notification-container');
-                const notification = document.createElement('div');
-                notification.className = `notification ${type}`;
-                notification.textContent = message;
-                container.appendChild(notification);
-                
-                setTimeout(() => notification.remove(), 3000);
-            }
-
-            function toggleMute() {
-                const btn = document.getElementById('mute-btn');
-                const isMuted = btn.innerHTML.includes('Unmute');
-                btn.innerHTML = isMuted ? 
-                    '<i class="fas fa-microphone"></i> Mute' : 
-                    '<i class="fas fa-microphone-slash"></i> Unmute';
-                showNotification(isMuted ? 'Microphone unmuted' : 'Microphone muted', 'info');
-            }
-
-            function toggleDeafen() {
-                const btn = document.getElementById('deafen-btn');
-                const isDeafened = btn.innerHTML.includes('Undeafen');
-                btn.innerHTML = isDeafened ? 
-                    '<i class="fas fa-headset"></i> Deafen' : 
-                    '<i class="fas fa-headset"></i> Undeafen';
-                showNotification(isDeafened ? 'Undeafened' : 'Deafened', 'info');
-            }
-
-            // ========== INITIALIZATION ==========
-            window.onload = function() {
-                console.log('🚀 Initializing EchoRoom...');
-                initWebSocket();
-                
-                // Enter key handlers
-                document.getElementById('login-email').onkeypress = function(e) {
-                    if (e.key === 'Enter') login();
-                };
-                document.getElementById('login-password').onkeypress = function(e) {
-                    if (e.key === 'Enter') login();
-                };
-                
-                document.getElementById('signup-username').onkeypress = function(e) {
-                    if (e.key === 'Enter') signup();
-                };
-                document.getElementById('signup-email').onkeypress = function(e) {
-                    if (e.key === 'Enter') signup();
-                };
-                document.getElementById('signup-password').onkeypress = function(e) {
-                    if (e.key === 'Enter') signup();
-                };
-                document.getElementById('signup-password-confirm').onkeypress = function(e) {
-                    if (e.key === 'Enter') signup();
-                };
-                
-                document.getElementById('message-input').onkeypress = function(e) {
-                    if (e.key === 'Enter') sendMessage();
-                };
-                
-                document.getElementById('room-name').onkeypress = function(e) {
-                    if (e.key === 'Enter') createRoom();
-                };
-                
-                document.getElementById('friend-username').onkeypress = function(e) {
-                    if (e.key === 'Enter') sendFriendRequest();
-                };
-                
-                document.getElementById('upgrade-code').onkeypress = function(e) {
-                    if (e.key === 'Enter') upgradeAccount();
-                };
+        function addRoomToList(room) {
+            const list = document.getElementById('servers-list');
+            const roomDiv = document.createElement('div');
+            roomDiv.className = 'nav-item';
+            
+            let icon = 'fa-hashtag';
+            if (room.type === 'voice') icon = 'fa-volume-up';
+            if (room.type === 'private') icon = 'fa-lock';
+            
+            roomDiv.innerHTML = `
+                <i class="fas ${icon}"></i>
+                <span>${room.name}</span>
+                ${room.type !== 'public' ? `<span class="room-type-badge ${room.type}">${room.type}</span>` : ''}
+            `;
+            
+            roomDiv.onclick = () => {
+                joinRoom(room.id, room.name);
             };
-        </script>
-    </body>
-    </html>
+            
+            list.appendChild(roomDiv);
+        }
+
+        function addPrivateChatToList(friend, roomId) {
+            const list = document.getElementById('servers-list');
+            
+            // Check if already exists
+            const existing = Array.from(list.children).find(item => 
+                item.textContent.includes(friend) && item.textContent.includes('DM')
+            );
+            
+            if (!existing) {
+                const roomDiv = document.createElement('div');
+                roomDiv.className = 'nav-item';
+                roomDiv.innerHTML = `
+                    <i class="fas fa-user-friends" style="color: #43b581"></i>
+                    <span>${friend}</span>
+                    <span class="room-type-badge dm">DM</span>
+                `;
+                
+                roomDiv.onclick = () => {
+                    joinPrivateChat(friend, roomId);
+                };
+                
+                // Insert at the beginning (before rooms)
+                const firstRoom = list.querySelector('.nav-item:not([style*="opacity: 0.7"])');
+                if (firstRoom) {
+                    list.insertBefore(roomDiv, firstRoom);
+                } else {
+                    list.appendChild(roomDiv);
+                }
+            }
+        }
+
+        function joinRoom(roomId, roomName) {
+            currentRoom = roomId;
+            document.getElementById('current-chat-name').innerHTML = 
+                `<i class="fas fa-hashtag"></i> ${roomName}`;
+            
+            document.getElementById('chat-messages').innerHTML = '';
+            
+            socket.emit('join_room', { 
+                room: roomId, 
+                username: currentUser 
+            });
+            
+            socket.emit('get_room_messages', { room: roomId });
+            
+            // Update room header
+            updateRoomHeader();
+        }
+
+        function joinPrivateChat(friend, roomId) {
+            currentRoom = roomId || `dm_${friend}`;
+            document.getElementById('current-chat-name').innerHTML = 
+                `<i class="fas fa-user-friends" style="color: #43b581"></i> ${friend}`;
+            
+            document.getElementById('chat-messages').innerHTML = '';
+            
+            // Load private messages
+            socket.emit('get_private_messages', {
+                username: currentUser,
+                friend: friend
+            });
+            
+            // Update room header for DM
+            updateRoomHeader();
+        }
+
+        function updateRoomHeader() {
+            const actions = document.getElementById('room-header-actions');
+            const deleteBtn = document.getElementById('delete-room-btn');
+            const callBtn = document.getElementById('call-btn');
+            const addFriendBtn = document.getElementById('add-friend-to-room-btn');
+            
+            if (currentRoom.startsWith('dm_')) {
+                // Private chat
+                actions.style.display = 'flex';
+                deleteBtn.style.display = 'none';
+                callBtn.style.display = 'inline-flex';
+                addFriendBtn.style.display = 'none';
+                isRoomCreator = false;
+            } else if (currentRoom !== 'general') {
+                // Regular room
+                actions.style.display = 'flex';
+                
+                // Show delete button only for room creator
+                if (currentRoomData && currentRoomData.creator === currentUser) {
+                    deleteBtn.style.display = 'inline-flex';
+                    isRoomCreator = true;
+                } else {
+                    deleteBtn.style.display = 'none';
+                    isRoomCreator = false;
+                }
+                
+                // Show call button only for private rooms
+                if (currentRoomData && currentRoomData.type === 'private') {
+                    callBtn.style.display = 'inline-flex';
+                } else {
+                    callBtn.style.display = 'none';
+                }
+                
+                // Show add friend button for room creator
+                if (currentRoomData && currentRoomData.creator === currentUser && currentRoomData.type === 'private') {
+                    addFriendBtn.style.display = 'inline-flex';
+                } else {
+                    addFriendBtn.style.display = 'none';
+                }
+            } else {
+                // General room
+                actions.style.display = 'none';
+            }
+            
+            updateCallButton();
+        }
+
+        function updateCallButton() {
+            const callBtn = document.getElementById('call-btn');
+            if (callBtn) {
+                if (inCall) {
+                    callBtn.innerHTML = '<i class="fas fa-phone-slash"></i> End Call';
+                    callBtn.style.background = 'rgba(255, 46, 99, 0.2)';
+                    callBtn.style.borderColor = 'rgba(255, 46, 99, 0.5)';
+                } else {
+                    callBtn.innerHTML = '<i class="fas fa-phone"></i> Call';
+                    callBtn.style.background = 'rgba(67, 181, 129, 0.1)';
+                    callBtn.style.borderColor = 'rgba(67, 181, 129, 0.3)';
+                }
+            }
+        }
+
+        function toggleCall() {
+            if (inCall) {
+                endCall();
+            } else {
+                startCall();
+            }
+        }
+
+        function startCall() {
+            socket.emit('start_call', {
+                from: currentUser,
+                room_id: currentRoom
+            });
+        }
+
+        function endCall() {
+            socket.emit('end_call', {
+                room_id: currentRoom
+            });
+        }
+
+        function leaveRoom() {
+            if (currentRoom === 'general') {
+                showNotification('Cannot leave general room', 'error');
+                return;
+            }
+            
+            if (confirm('Leave this room?')) {
+                socket.emit('leave_room', {
+                    username: currentUser,
+                    room_id: currentRoom
+                });
+            }
+        }
+
+        function deleteRoom() {
+            if (!isRoomCreator) {
+                showNotification('Only room creator can delete room', 'error');
+                return;
+            }
+            
+            if (confirm('Delete this room? This action cannot be undone.')) {
+                socket.emit('delete_room', {
+                    username: currentUser,
+                    room_id: currentRoom
+                });
+            }
+        }
+
+        function updateRoomMembers(members) {
+            const membersDiv = document.getElementById('room-members');
+            membersDiv.innerHTML = '';
+            
+            if (!members || members.length === 0) {
+                membersDiv.innerHTML = '<div style="padding: 10px; opacity: 0.7; text-align: center;">No members</div>';
+                return;
+            }
+            
+            members.forEach(member => {
+                const memberDiv = document.createElement('div');
+                memberDiv.className = 'nav-item';
+                memberDiv.innerHTML = `
+                    <i class="fas fa-user" style="color: ${member.connected ? '#43b581' : '#888'}"></i>
+                    <span>${member.username}</span>
+                    ${member.username === currentUser ? '<span style="margin-left: auto; font-size: 12px; opacity: 0.7;">You</span>' : ''}
+                `;
+                membersDiv.appendChild(memberDiv);
+            });
+        }
+
+        // ========== CREATE ROOM FUNCTIONS ==========
+        function showCreateRoomModal() {
+            document.getElementById('create-room-modal').style.display = 'flex';
+            document.getElementById('room-name').focus();
+        }
+
+        function hideCreateRoomModal() {
+            document.getElementById('create-room-modal').style.display = 'none';
+            document.getElementById('room-name').value = '';
+            document.getElementById('room-description').value = '';
+            document.getElementById('room-type').value = 'public';
+        }
+
+        function createRoom() {
+            const name = document.getElementById('room-name').value.trim();
+            const description = document.getElementById('room-description').value.trim();
+            const type = document.getElementById('room-type').value;
+            
+            if (!name) {
+                showNotification('Room name is required', 'error');
+                return;
+            }
+            
+            socket.emit('create_room', {
+                name: name,
+                description: description,
+                type: type,
+                creator: currentUser
+            });
+        }
+
+        // ========== FRIEND FUNCTIONS ==========
+        function showAddFriendModal() {
+            document.getElementById('add-friend-modal').style.display = 'flex';
+            document.getElementById('friend-username').focus();
+        }
+
+        function hideAddFriendModal() {
+            document.getElementById('add-friend-modal').style.display = 'none';
+            document.getElementById('friend-username').value = '';
+        }
+
+        function sendFriendRequest() {
+            const friendUsername = document.getElementById('friend-username').value.trim();
+            
+            if (!friendUsername) {
+                showNotification('Please enter a username', 'error');
+                return;
+            }
+            
+            if (friendUsername === currentUser) {
+                showNotification('You cannot add yourself', 'error');
+                return;
+            }
+            
+            socket.emit('send_friend_request', {
+                from: currentUser,
+                to: friendUsername
+            });
+        }
+
+        function showFriendRequestsModal() {
+            document.getElementById('friend-requests-modal').style.display = 'flex';
+            updateFriendRequestsList();
+        }
+
+        function hideFriendRequestsModal() {
+            document.getElementById('friend-requests-modal').style.display = 'none';
+        }
+
+        function updateFriendRequestsList() {
+            const list = document.getElementById('friend-requests-list');
+            list.innerHTML = '';
+            
+            if (friendRequests.length === 0) {
+                list.innerHTML = '<div style="padding: 20px; text-align: center; opacity: 0.7;">No friend requests</div>';
+                return;
+            }
+            
+            friendRequests.forEach(request => {
+                const requestDiv = document.createElement('div');
+                requestDiv.style.padding = '15px';
+                requestDiv.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+                requestDiv.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>${request}</strong>
+                            <div style="font-size: 12px; opacity: 0.7;">Wants to be your friend</div>
+                        </div>
+                        <div>
+                            <button class="action-btn" onclick="acceptFriendRequest('${request}')" title="Accept">
+                                <i class="fas fa-check"></i> Accept
+                            </button>
+                            <button class="action-btn delete" onclick="declineFriendRequest('${request}')" title="Decline">
+                                <i class="fas fa-times"></i> Decline
+                            </button>
+                        </div>
+                    </div>
+                `;
+                list.appendChild(requestDiv);
+            });
+        }
+
+        function updateFriendsList(friendsList) {
+            const friendsContainer = document.getElementById('friends-list');
+            friendsContainer.innerHTML = '';
+            
+            if (!friendsList || friendsList.length === 0) {
+                friendsContainer.innerHTML = '<div style="padding: 10px; opacity: 0.7; text-align: center;">No friends yet</div>';
+                return;
+            }
+            
+            friendsList.forEach(friend => {
+                const friendDiv = document.createElement('div');
+                friendDiv.className = 'nav-item';
+                friendDiv.innerHTML = `
+                    <i class="fas fa-user" style="color: ${friend.connected ? '#43b581' : '#888'}"></i>
+                    <span>${friend.username}</span>
+                    <span class="friend-status ${friend.connected ? '' : 'offline'}">
+                        ${friend.connected ? 'Online' : 'Offline'}
+                    </span>
+                    <button class="friend-chat-btn" onclick="startPrivateChat('${friend.username}')" title="Chat">
+                        <i class="fas fa-comment"></i>
+                    </button>
+                    <button class="action-btn delete" onclick="removeFriend('${friend.username}')" title="Remove Friend" style="margin-left: auto; padding: 5px 10px; font-size: 12px;">
+                        <i class="fas fa-user-minus"></i>
+                    </button>
+                `;
+                friendsContainer.appendChild(friendDiv);
+            });
+        }
+
+        function acceptFriendRequest(friendUsername) {
+            socket.emit('accept_friend_request', {
+                username: currentUser,
+                friend_username: friendUsername
+            });
+        }
+
+        function declineFriendRequest(friendUsername) {
+            socket.emit('decline_friend_request', {
+                username: currentUser,
+                friend_username: friendUsername
+            });
+        }
+
+        function removeFriend(friendUsername) {
+            if (confirm(`Remove ${friendUsername} from friends?`)) {
+                socket.emit('remove_friend', {
+                    username: currentUser,
+                    friend_username: friendUsername
+                });
+            }
+        }
+
+        function updateFriendRequestsBadge() {
+            const badge = document.getElementById('friend-requests-badge');
+            if (friendRequests.length > 0) {
+                badge.textContent = friendRequests.length;
+                badge.style.display = 'block';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        // ========== PRIVATE CHAT FUNCTIONS ==========
+        function createPrivateChatRoom(friendUsername) {
+            // Create a unique room ID for the private chat
+            const roomId = `dm_${currentUser}_${friendUsername}`;
+            privateChats[friendUsername] = roomId;
+            
+            // Add to room list
+            addPrivateChatToList(friendUsername, roomId);
+            
+            // Notify server about private chat creation
+            socket.emit('create_private_chat', {
+                user1: currentUser,
+                user2: friendUsername,
+                room_id: roomId
+            });
+            
+            return roomId;
+        }
+
+        function startPrivateChat(friendUsername) {
+            let roomId = privateChats[friendUsername];
+            
+            if (!roomId) {
+                roomId = createPrivateChatRoom(friendUsername);
+            }
+            
+            joinPrivateChat(friendUsername, roomId);
+        }
+
+        // ========== ADD FRIEND TO ROOM FUNCTIONS ==========
+        function showAddFriendToRoomModal() {
+            const modal = document.getElementById('add-friend-to-room-modal');
+            const select = document.getElementById('room-friend-select');
+            
+            // Clear and populate friend list
+            select.innerHTML = '<option value="">Select a friend...</option>';
+            
+            friends.forEach(friend => {
+                if (friend.connected) {
+                    const option = document.createElement('option');
+                    option.value = friend.username;
+                    option.textContent = `${friend.username} (Online)`;
+                    select.appendChild(option);
+                }
+            });
+            
+            modal.style.display = 'flex';
+        }
+
+        function hideAddFriendToRoomModal() {
+            document.getElementById('add-friend-to-room-modal').style.display = 'none';
+        }
+
+        function addFriendToRoom() {
+            const select = document.getElementById('room-friend-select');
+            const friendUsername = select.value;
+            
+            if (!friendUsername) {
+                showNotification('Please select a friend', 'error');
+                return;
+            }
+            
+            socket.emit('add_friend_to_room', {
+                room_id: currentRoom,
+                friend_username: friendUsername,
+                username: currentUser
+            });
+        }
+
+        // ========== INVITE FUNCTIONS ==========
+        function showInviteModal() {
+            document.getElementById('invite-modal').style.display = 'flex';
+            socket.emit('get_invite_link', {
+                username: currentUser,
+                room_id: currentRoom
+            });
+        }
+
+        function hideInviteModal() {
+            document.getElementById('invite-modal').style.display = 'none';
+        }
+
+        function copyInviteLink() {
+            const linkText = document.getElementById('invite-link').textContent;
+            navigator.clipboard.writeText(linkText).then(() => {
+                showNotification('Invite link copied!', 'success');
+            });
+        }
+
+        // ========== UPGRADE FUNCTIONS ==========
+        function showUpgradeModal() {
+            document.getElementById('upgrade-modal').style.display = 'flex';
+            document.getElementById('upgrade-code').focus();
+        }
+
+        function hideUpgradeModal() {
+            document.getElementById('upgrade-modal').style.display = 'none';
+            document.getElementById('upgrade-code').value = '';
+        }
+
+        function upgradeAccount() {
+            const upgradeCode = document.getElementById('upgrade-code').value.trim();
+            
+            if (!upgradeCode) {
+                showNotification('Enter upgrade code', 'error');
+                return;
+            }
+            
+            socket.emit('activate_premium', {
+                username: currentUser,
+                code: upgradeCode
+            });
+        }
+
+        // ========== UTILITY FUNCTIONS ==========
+        function showNotification(message, type = 'info') {
+            const container = document.getElementById('notification-container');
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            container.appendChild(notification);
+            
+            setTimeout(() => notification.remove(), 3000);
+        }
+
+        function toggleMute() {
+            const btn = document.getElementById('mute-btn');
+            const isMuted = btn.innerHTML.includes('Unmute');
+            btn.innerHTML = isMuted ? 
+                '<i class="fas fa-microphone"></i> Mute' : 
+                '<i class="fas fa-microphone-slash"></i> Unmute';
+            showNotification(isMuted ? 'Microphone unmuted' : 'Microphone muted', 'info');
+        }
+
+        function toggleDeafen() {
+            const btn = document.getElementById('deafen-btn');
+            const isDeafened = btn.innerHTML.includes('Undeafen');
+            btn.innerHTML = isDeafened ? 
+                '<i class="fas fa-headset"></i> Deafen' : 
+                '<i class="fas fa-headset"></i> Undeafen';
+            showNotification(isDeafened ? 'Undeafened' : 'Deafened', 'info');
+        }
+
+        // ========== INITIALIZATION ==========
+        window.onload = function() {
+            console.log('🚀 Initializing EchoRoom...');
+            initWebSocket();
+            
+            // Enter key handlers
+            document.getElementById('login-email').onkeypress = function(e) {
+                if (e.key === 'Enter') login();
+            };
+            document.getElementById('login-password').onkeypress = function(e) {
+                if (e.key === 'Enter') login();
+            };
+            
+            document.getElementById('signup-username').onkeypress = function(e) {
+                if (e.key === 'Enter') signup();
+            };
+            document.getElementById('signup-email').onkeypress = function(e) {
+                if (e.key === 'Enter') signup();
+            };
+            document.getElementById('signup-password').onkeypress = function(e) {
+                if (e.key === 'Enter') signup();
+            };
+            document.getElementById('signup-password-confirm').onkeypress = function(e) {
+                if (e.key === 'Enter') signup();
+            };
+            
+            document.getElementById('message-input').onkeypress = function(e) {
+                if (e.key === 'Enter') sendMessage();
+            };
+            
+            document.getElementById('room-name').onkeypress = function(e) {
+                if (e.key === 'Enter') createRoom();
+            };
+            
+            document.getElementById('friend-username').onkeypress = function(e) {
+                if (e.key === 'Enter') sendFriendRequest();
+            };
+            
+            document.getElementById('upgrade-code').onkeypress = function(e) {
+                if (e.key === 'Enter') upgradeAccount();
+            };
+        };
+    </script>
+</body>
+</html>
 '''
 
 # Data file and functions
@@ -2340,7 +2629,8 @@ def load_data():
         'user_settings': {},
         'friends_db': {},
         'friend_requests_db': {},
-        'sessions_db': {}
+        'sessions_db': {},
+        'private_chats_db': {}  # NEW: Store private chat rooms
     }
 
 def save_data():
@@ -2353,7 +2643,8 @@ def save_data():
                 'user_settings': user_settings_db,
                 'friends_db': friends_db,
                 'friend_requests_db': friend_requests_db,
-                'sessions_db': sessions_db
+                'sessions_db': sessions_db,
+                'private_chats_db': private_chats_db  # NEW
             }, f, indent=2)
     except Exception as e:
         print(f"Error saving data: {e}")
@@ -2367,6 +2658,7 @@ user_settings_db = data.get('user_settings', {})
 friends_db = data.get('friends_db', {})
 friend_requests_db = data.get('friend_requests_db', {})
 sessions_db = data.get('sessions_db', {})
+private_chats_db = data.get('private_chats_db', {})  # NEW
 
 active_users = {}
 user_rooms = {}
@@ -2476,6 +2768,61 @@ def invalidate_all_sessions(email):
         save_data()
         return True
     return False
+
+def get_private_chat_room(user1, user2):
+    """Get or create private chat room ID for two users"""
+    # Create sorted key for consistent room ID
+    users = sorted([user1, user2])
+    room_id = f"dm_{users[0]}_{users[1]}"
+    
+    # Store in private chats database
+    if room_id not in private_chats_db:
+        private_chats_db[room_id] = {
+            'id': room_id,
+            'type': 'dm',
+            'users': [user1, user2],
+            'created_at': datetime.now().isoformat(),
+            'messages': []
+        }
+        save_data()
+    
+    return room_id
+
+def get_private_messages(user1, user2):
+    """Get private messages between two users"""
+    room_id = get_private_chat_room(user1, user2)
+    return private_chats_db.get(room_id, {}).get('messages', [])
+
+def add_private_message(from_user, to_user, message, timestamp):
+    """Add a private message to the database"""
+    room_id = get_private_chat_room(from_user, to_user)
+    
+    message_data = {
+        'id': str(uuid.uuid4())[:8],
+        'from': from_user,
+        'to': to_user,
+        'message': message,
+        'timestamp': timestamp,
+        'type': 'private'
+    }
+    
+    if room_id not in private_chats_db:
+        private_chats_db[room_id] = {
+            'id': room_id,
+            'type': 'dm',
+            'users': [from_user, to_user],
+            'created_at': datetime.now().isoformat(),
+            'messages': []
+        }
+    
+    private_chats_db[room_id]['messages'].append(message_data)
+    
+    # Keep only last 1000 messages per chat
+    if len(private_chats_db[room_id]['messages']) > 1000:
+        private_chats_db[room_id]['messages'] = private_chats_db[room_id]['messages'][-1000:]
+    
+    save_data()
+    return message_data
 
 # ==================== FLASK ROUTES ====================
 
@@ -2736,6 +3083,20 @@ def handle_join_room(data):
     username = session['username']
     room_id = data['room']
     
+    # Check if it's a private chat room
+    if room_id.startswith('dm_'):
+        # Allow joining private chat rooms
+        join_room(room_id)
+        user_rooms[username] = room_id
+        
+        print(f"✅ {username} joined private chat: {room_id}")
+        
+        emit('room_joined', {
+            'room': {'id': room_id, 'type': 'dm'},
+            'members': []
+        })
+        return
+    
     if username in active_users:
         room = rooms_db.get(room_id)
         if room and room.get('type') == 'private':
@@ -2779,20 +3140,23 @@ def handle_leave_room(data):
         emit('room_left', {'message': 'Cannot leave general room'})
         return
     
-    if room_id in rooms_db:
-        room = rooms_db[room_id]
-        if username in room.get('members', []):
-            room['members'] = [m for m in room['members'] if m != username]
-            save_data()
+    # Don't leave private chat rooms from database
+    if not room_id.startswith('dm_'):
+        if room_id in rooms_db:
+            room = rooms_db[room_id]
+            if username in room.get('members', []):
+                room['members'] = [m for m in room['members'] if m != username]
+                save_data()
     
     leave_room(room_id)
     
     if username in user_rooms and user_rooms[username] == room_id:
         del user_rooms[username]
     
-    socketio.emit('room_members_updated', 
-                 get_room_members(room_id),
-                 room=room_id)
+    if not room_id.startswith('dm_'):
+        socketio.emit('room_members_updated', 
+                     get_room_members(room_id),
+                     room=room_id)
     
     emit('room_left', {
         'room_id': room_id,
@@ -2811,6 +3175,11 @@ def handle_delete_room(data):
     
     if room_id == 'general':
         emit('room_deleted', {'message': 'Cannot delete general room'})
+        return
+    
+    # Don't allow deleting private chat rooms
+    if room_id.startswith('dm_'):
+        emit('room_deleted', {'message': 'Cannot delete private chats'})
         return
     
     if room_id in rooms_db:
@@ -2847,6 +3216,10 @@ def handle_get_invite_link(data):
     
     username = session['username']
     room_id = data['room_id']
+    
+    if room_id.startswith('dm_'):
+        emit('invite_link_error', {'message': 'Cannot generate invite links for private chats'})
+        return
     
     if room_id in rooms_db:
         room = rooms_db[room_id]
@@ -2889,6 +3262,74 @@ def handle_message(data):
     save_data()
     emit('message', message, room=data['server'])
 
+@socketio.on('private_message')
+def handle_private_message(data):
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    from_user = session['username']
+    to_user = data['to']
+    message = data['message']
+    timestamp = data.get('timestamp', datetime.now().isoformat())
+    
+    # Check if users are friends
+    if not are_friends(from_user, to_user):
+        emit('private_message_error', {'message': 'You can only message friends'})
+        return
+    
+    # Save private message
+    message_data = add_private_message(from_user, to_user, message, timestamp)
+    
+    # Send to sender
+    emit('private_message', message_data)
+    
+    # Send to recipient if online
+    if to_user in active_users:
+        socketio.emit('private_message', message_data, room=active_users[to_user])
+    
+    # Also send to the private chat room
+    room_id = get_private_chat_room(from_user, to_user)
+    emit('private_message', message_data, room=room_id)
+    if to_user in active_users:
+        socketio.emit('private_message', message_data, room=room_id)
+
+@socketio.on('get_private_messages')
+def handle_get_private_messages(data):
+    session = check_auth(request.sid)
+    if not session:
+        return
+    
+    username = session['username']
+    friend = data['friend']
+    
+    # Check if users are friends
+    if not are_friends(username, friend):
+        emit('private_messages_error', {'message': 'You can only view messages with friends'})
+        return
+    
+    messages = get_private_messages(username, friend)
+    
+    # Format messages for display
+    formatted_messages = []
+    for msg in messages:
+        user_settings = user_settings_db.get(msg['from'], {})
+        formatted_messages.append({
+            'id': msg['id'],
+            'username': msg['from'],
+            'displayName': user_settings.get('displayName', msg['from']),
+            'message': msg['message'],
+            'server': f"dm_{username}_{friend}",
+            'timestamp': msg['timestamp'],
+            'type': 'private'
+        })
+    
+    emit('private_messages', {
+        'friend': friend,
+        'messages': formatted_messages
+    })
+
 @socketio.on('delete_message')
 def handle_delete_message(data):
     session = check_auth(request.sid)
@@ -2900,17 +3341,29 @@ def handle_delete_message(data):
     message_id = data['message_id']
     room_id = data['room_id']
     
-    if room_id in messages_db:
-        for i, msg in enumerate(messages_db[room_id]):
-            if msg.get('id') == message_id:
-                room = rooms_db.get(room_id, {})
-                can_delete = msg.get('username') == username or room.get('creator') == username
-                
-                if can_delete:
-                    del messages_db[room_id][i]
+    # Check if it's a private chat room
+    if room_id.startswith('dm_'):
+        # For private chats, we need to find and delete the message
+        if room_id in private_chats_db:
+            for i, msg in enumerate(private_chats_db[room_id]['messages']):
+                if msg.get('id') == message_id and msg.get('from') == username:
+                    del private_chats_db[room_id]['messages'][i]
                     save_data()
                     emit('message_deleted', {'message_id': message_id}, room=room_id)
                     break
+    else:
+        # Regular room message
+        if room_id in messages_db:
+            for i, msg in enumerate(messages_db[room_id]):
+                if msg.get('id') == message_id:
+                    room = rooms_db.get(room_id, {})
+                    can_delete = msg.get('username') == username or room.get('creator') == username
+                    
+                    if can_delete:
+                        del messages_db[room_id][i]
+                        save_data()
+                        emit('message_deleted', {'message_id': message_id}, room=room_id)
+                        break
 
 @socketio.on('get_room_messages')
 def handle_get_room_messages(data):
@@ -2919,8 +3372,26 @@ def handle_get_room_messages(data):
         return
     
     room_id = data['room']
-    room_messages = messages_db.get(room_id, [])
-    emit('chat_messages', room_messages[-100:])
+    
+    # Check if it's a private chat room
+    if room_id.startswith('dm_'):
+        # Extract usernames from room ID
+        parts = room_id.split('_')
+        if len(parts) == 3:
+            user1, user2 = parts[1], parts[2]
+            username = session['username']
+            
+            # Determine which friend this chat is with
+            friend = user2 if user1 == username else user1
+            
+            # Get private messages
+            handle_get_private_messages({
+                'friend': friend
+            })
+    else:
+        # Regular room messages
+        room_messages = messages_db.get(room_id, [])
+        emit('chat_messages', room_messages[-100:])
 
 @socketio.on('get_rooms')
 def handle_get_rooms():
@@ -2958,6 +3429,34 @@ def handle_create_room(data):
     
     emit('room_created', {'room': room})
     socketio.emit('room_list', list(rooms_db.values()), broadcast=True)
+
+@socketio.on('create_private_chat')
+def handle_create_private_chat(data):
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    username = session['username']
+    user1 = data['user1']
+    user2 = data['user2']
+    room_id = data.get('room_id')
+    
+    # Verify the user is part of this private chat
+    if username not in [user1, user2]:
+        emit('private_chat_error', {'message': 'Unauthorized'})
+        return
+    
+    # Create the private chat room
+    actual_room_id = get_private_chat_room(user1, user2)
+    
+    # Join the room
+    join_room(actual_room_id)
+    
+    emit('private_chat_created', {
+        'friend': user2 if user1 == username else user1,
+        'room_id': actual_room_id
+    })
 
 @socketio.on('get_user_settings')
 def handle_get_user_settings(data):
@@ -3106,11 +3605,15 @@ def handle_accept_friend_request(data):
     
     save_data()
     
+    # Create private chat room for the new friends
+    room_id = get_private_chat_room(username, friend_username)
+    
     if username in active_users:
         emit('friend_request_accepted', {
             'friend': friend_username
         }, room=active_users[username])
         
+        # Get updated friends list with online status
         friends_list = []
         for friend in friends_db.get(username, []):
             is_connected = friend in active_users
@@ -3118,13 +3621,21 @@ def handle_accept_friend_request(data):
                 'username': friend,
                 'connected': is_connected
             })
-        emit('friends_list', friends_list, room=active_users[username])
+        
+        emit('friends_list', {'friends': friends_list}, room=active_users[username])
+        
+        # Notify about private chat creation
+        emit('private_chat_created', {
+            'friend': friend_username,
+            'room_id': room_id
+        }, room=active_users[username])
     
     if friend_username in active_users:
         emit('friend_added', {
             'friend': username
         }, room=active_users[friend_username])
         
+        # Get updated friends list with online status
         friends_list = []
         for friend in friends_db.get(friend_username, []):
             is_connected = friend in active_users
@@ -3132,7 +3643,14 @@ def handle_accept_friend_request(data):
                 'username': friend,
                 'connected': is_connected
             })
-        emit('friends_list', friends_list, room=active_users[friend_username])
+        
+        emit('friends_list', {'friends': friends_list}, room=active_users[friend_username])
+        
+        # Notify about private chat creation
+        emit('private_chat_created', {
+            'friend': username,
+            'room_id': room_id
+        }, room=active_users[friend_username])
 
 @socketio.on('decline_friend_request')
 def handle_decline_friend_request(data):
@@ -3183,7 +3701,7 @@ def handle_remove_friend(data):
                 'username': friend,
                 'connected': is_connected
             })
-        emit('friends_list', friends_list, room=active_users[username])
+        emit('friends_list', {'friends': friends_list}, room=active_users[username])
     
     if friend_username in active_users:
         emit('friend_removed', {
@@ -3197,7 +3715,7 @@ def handle_remove_friend(data):
                 'username': friend,
                 'connected': is_connected
             })
-        emit('friends_list', friends_list, room=active_users[friend_username])
+        emit('friends_list', {'friends': friends_list}, room=active_users[friend_username])
 
 @socketio.on('get_friends')
 def handle_get_friends(data):
@@ -3215,7 +3733,71 @@ def handle_get_friends(data):
             'connected': is_connected
         })
     
-    emit('friends_list', friends_list)
+    emit('friends_list', {'friends': friends_list})
+
+@socketio.on('add_friend_to_room')
+def handle_add_friend_to_room(data):
+    session = check_auth(request.sid)
+    if not session:
+        emit('session_expired', {'message': 'Please login again'})
+        return
+    
+    username = session['username']
+    room_id = data['room_id']
+    friend_username = data['friend_username']
+    
+    # Check if room exists
+    if room_id not in rooms_db:
+        emit('friend_added_to_room_error', {'message': 'Room not found'})
+        return
+    
+    room = rooms_db[room_id]
+    
+    # Check if user is room creator
+    if room.get('creator') != username:
+        emit('friend_added_to_room_error', {'message': 'Only room creator can add friends'})
+        return
+    
+    # Check if room is private
+    if room.get('type') != 'private':
+        emit('friend_added_to_room_error', {'message': 'Can only add friends to private rooms'})
+        return
+    
+    # Check if users are friends
+    if not are_friends(username, friend_username):
+        emit('friend_added_to_room_error', {'message': 'You can only add friends to private rooms'})
+        return
+    
+    # Add friend to room members
+    if friend_username not in room.get('members', []):
+        room['members'] = room.get('members', []) + [friend_username]
+        save_data()
+    
+    # Add to invited list
+    if 'invited' not in room:
+        room['invited'] = []
+    
+    if friend_username not in room['invited']:
+        room['invited'].append(friend_username)
+        save_data()
+    
+    # Notify friend if online
+    if friend_username in active_users:
+        socketio.emit('room_invited', {
+            'room_id': room_id,
+            'room_name': room.get('name'),
+            'invited_by': username
+        }, room=active_users[friend_username])
+    
+    emit('friend_added_to_room', {
+        'friend': friend_username,
+        'room_id': room_id
+    })
+    
+    # Update room members for everyone in the room
+    socketio.emit('room_members_updated', 
+                 get_room_members(room_id),
+                 room=room_id)
 
 @socketio.on('start_call')
 def handle_start_call(data):
@@ -3227,9 +3809,17 @@ def handle_start_call(data):
     username = session['username']
     room_id = data['room_id']
     
+    # For private chats, allow calls
+    if room_id.startswith('dm_'):
+        emit('call_started', {
+            'from': username,
+            'room_id': room_id
+        }, room=room_id, include_self=False)
+        return
+    
     room = rooms_db.get(room_id, {})
     if room.get('type') != 'private':
-        emit('call_error', {'message': 'Calls only allowed in private rooms'})
+        emit('call_error', {'message': 'Calls only allowed in private rooms or DMs'})
         return
     
     emit('call_started', {
@@ -3253,6 +3843,11 @@ if __name__ == '__main__':
     print("=" * 60)
     print("🎤 ECHOROOM - SECURE VERSION")
     print("=" * 60)
+    print("\n✅ NEW FEATURES:")
+    print("- Private chat with friends")
+    print("- Direct message friends after accepting request")
+    print("- Add friends to private rooms (no invite needed)")
+    print("- Call button in private chats")
     print("\n✅ SECURITY FEATURES:")
     print("- Real Gmail validation (@gmail.com required)")
     print("- Secure password hashing with salt")
