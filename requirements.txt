@@ -5,3 +5,19 @@ eventlet==0.33.3
 requests==2.31.0
 psycopg2-binary==2.9.9
 python-engineio==4.8.0
+# المكتبات المفقودة التي تحتاجها:
+greenlet==3.0.1  # مطلوب لـ eventlet
+gevent==23.9.1   # بديل لـ eventlet (اختياري)
+gevent-websocket==0.10.1
+Werkzeug==2.3.7  # مطلوب لـ Flask
+Jinja2==3.1.2    # مطلوب لـ Flask
+itsdangerous==2.1.2  # مطلوب لـ Flask
+click==8.1.7     # مطلوب لـ Flask
+blinker==1.7.0   # للإشارات في Flask
+SQLAlchemy==2.0.23  # إذا كنت تستخدم ORM
+redis==5.0.1     # للجلسات المتعددة (اختياري)
+pytz==2023.3     # للتعامل مع الوقت
+email-validator==2.1.0  # للتحقق من البريد الإلكتروني
+python-dotenv==1.0.0  # لقراءة متغيرات البيئة
+gunicorn==21.2.0  # خادم إنتاج (مهم للنشر)
+whitenoise==6.6.0  # لتقديم الملفات الثابتة
